@@ -10,14 +10,44 @@ export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // 同意チェック
+  const [consentStorage, setConsentStorage] = useState(false);
+  const [consentAI, setConsentAI] = useState(false);
+  const [consentImprovement, setConsentImprovement] = useState(false);
+
   const router = useRouter();
   const supabase = createClient();
 
+  const allConsented = consentStorage && consentAI && consentImprovement;
+
   const handleSubmit = async () => {
+    if (isSignUp && !allConsented) {
+      setMessage("すべての項目に同意してください。");
+      return;
+    }
     setLoading(true);
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email, password });
-      setMessage(error ? error.message : "確認メールを送りました。メールをチェックしてね。");
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+            setMessage(error.message);
+        } else if (data.user && data.user.identities?.length === 0) {
+
+        setMessage("このメールアドレスはすでに登録されています。ログインしてください。");
+        } else {
+  // 新規登録成功
+        if (data.user) {
+            await supabase.from("user_consents").insert({
+                user_id: data.user.id,
+                terms_version: "1.0",
+                privacy_version: "1.0",
+                ai_analysis_consent: consentAI,
+                data_storage_consent: consentStorage,
+                product_improvement_consent:    consentImprovement,
+            });
+        }
+        setMessage("確認メールを送りました。メールをチェックしてね。");
+}
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setMessage(error.message);
@@ -42,7 +72,6 @@ export default function LoginPage() {
           position: relative;
         }
 
-        /* 星1個 */
         .login-star {
           position: fixed;
           width: 2px; height: 2px;
@@ -101,7 +130,7 @@ export default function LoginPage() {
           color: rgba(255,255,255,0.75);
           outline: none;
           transition: border-color 0.2s, background 0.2s;
-          font-family: 'Zen Maru Gothic', sans-serif;
+          font-family: 'Noto Sans JP', sans-serif;
           box-sizing: border-box;
           margin-bottom: 10px;
         }
@@ -111,10 +140,66 @@ export default function LoginPage() {
           background: rgba(255,255,255,0.06);
         }
 
+        /* 同意エリア */
+        .consent-wrap {
+          margin: 16px 0 4px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .consent-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          cursor: pointer;
+        }
+        .consent-checkbox {
+          width: 16px; height: 16px;
+          border-radius: 4px;
+          border: 1px solid rgba(255,255,255,0.15);
+          background: rgba(255,255,255,0.04);
+          appearance: none;
+          -webkit-appearance: none;
+          cursor: pointer;
+          flex-shrink: 0;
+          margin-top: 2px;
+          transition: all 0.2s;
+          position: relative;
+        }
+        .consent-checkbox:checked {
+          background: rgba(139,92,246,0.7);
+          border-color: rgba(139,92,246,0.9);
+        }
+        .consent-checkbox:checked::after {
+          content: "✓";
+          position: absolute;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 10px;
+          color: white;
+        }
+        .consent-label {
+          font-size: 11px;
+          color: rgba(255,255,255,0.4);
+          line-height: 1.7;
+          letter-spacing: 0.03em;
+        }
+        .consent-link {
+          color: rgba(139,92,246,0.6);
+          text-decoration: underline;
+          cursor: pointer;
+          background: none;
+          border: none;
+          font-size: 11px;
+          font-family: 'Noto Sans JP', sans-serif;
+          padding: 0;
+        }
+        .consent-link:hover { color: rgba(139,92,246,0.9); }
+
         .login-btn {
           display: block;
           width: 100%;
-          margin-top: 10px;
+          margin-top: 16px;
           padding: 14px;
           border-radius: 50px;
           border: none;
@@ -125,7 +210,7 @@ export default function LoginPage() {
           letter-spacing: 0.14em;
           cursor: pointer;
           transition: opacity 0.2s, transform 0.15s;
-          font-family: 'Zen Maru Gothic', sans-serif;
+          font-family: 'Noto Sans JP', sans-serif;
           box-shadow: 0 6px 24px rgba(91,33,182,0.35);
         }
         .login-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
@@ -180,7 +265,56 @@ export default function LoginPage() {
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           />
 
-          <button className="login-btn" onClick={handleSubmit} disabled={loading}>
+          {/* 新規登録時のみ同意フロー表示 */}
+          {isSignUp && (
+            <div className="consent-wrap">
+              <label className="consent-item">
+                <input
+                  type="checkbox"
+                  className="consent-checkbox"
+                  checked={consentStorage}
+                  onChange={(e) => setConsentStorage(e.target.checked)}
+                />
+                <span className="consent-label">
+                  音声・文字起こしデータをサーバーに保存することに同意します。（
+                  <button className="consent-link" onClick={() => window.open("/privacy", "_blank")}>プライバシーポリシー</button>
+                  ）
+                </span>
+              </label>
+
+              <label className="consent-item">
+                <input
+                  type="checkbox"
+                  className="consent-checkbox"
+                  checked={consentAI}
+                  onChange={(e) => setConsentAI(e.target.checked)}
+                />
+                <span className="consent-label">
+                  感情・トリガーのAI解析のためOpenAI APIにテキストを送信することに同意します。
+                </span>
+              </label>
+
+              <label className="consent-item">
+                <input
+                  type="checkbox"
+                  className="consent-checkbox"
+                  checked={consentImprovement}
+                  onChange={(e) => setConsentImprovement(e.target.checked)}
+                />
+                <span className="consent-label">
+                  サービス改善のためデータを利用することに同意します。（
+                  <button className="consent-link" onClick={() => window.open("/terms", "_blank")}>利用規約</button>
+                  ）
+                </span>
+              </label>
+            </div>
+          )}
+
+          <button
+            className="login-btn"
+            onClick={handleSubmit}
+            disabled={loading || (isSignUp && !allConsented)}
+          >
             {loading ? "..." : isSignUp ? "登録する" : "ログイン"}
           </button>
 

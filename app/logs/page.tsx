@@ -9,6 +9,7 @@ type Journal = {
   created_at: string;
   emotion: string;
   transcript: string;
+  trigger?: string;
 };
 
 const emotionConfig: { [key: string]: { emoji: string; color: string; bg: string; whisper: string } } = {
@@ -50,6 +51,8 @@ export default function LogsPage() {
   const [journals, setJournals] = useState<Journal[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
+  const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -67,6 +70,42 @@ export default function LogsPage() {
     fetchJournals();
   }, []);
 
+  // period または journals が変わったら自動生成
+  useEffect(() => {
+    if (journals.length === 0) return;
+    const targetJournals = journals.filter(
+      (j) => new Date(j.created_at).getTime() > Date.now() - period * 24 * 60 * 60 * 1000
+    );
+    generateSummary(targetJournals);
+  }, [period, journals]);
+
+    const generateSummary = async (targetJournals: Journal[]) => {
+    if (targetJournals.length === 0) {
+    setWeeklySummary(null);
+    return;
+    }
+    setIsGenerating(true);
+    setWeeklySummary(null);
+    try {
+        const { data: userData } = await supabase.auth.getUser();
+    const res = await fetch("/api/weekly", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+        journals: targetJournals,
+        period,
+        userId: userData.user?.id,
+        }),
+    });
+    const data = await res.json();
+    setWeeklySummary(data.summary ?? null);
+    } catch (e) {
+    console.error(e);
+    } finally {
+    setIsGenerating(false);
+    }
+};
+
   const cutoff = Date.now() - period * 24 * 60 * 60 * 1000;
   const filtered = journals.filter((j) => new Date(j.created_at).getTime() > cutoff);
 
@@ -77,6 +116,12 @@ export default function LogsPage() {
   });
 
   const sorted = Object.entries(emotionMap).sort((a, b) => b[1].length - a[1].length);
+
+  const triggerMap: { [key: string]: number } = {};
+  filtered.forEach((j) => {
+    if (j.trigger) triggerMap[j.trigger] = (triggerMap[j.trigger] || 0) + 1;
+  });
+  const sortedTriggers = Object.entries(triggerMap).sort((a, b) => b[1] - a[1]);
 
   return (
     <>
@@ -176,7 +221,7 @@ export default function LogsPage() {
         .logs-section-label {
           font-family: 'Zen Old Mincho', serif;
           font-size: 11px; letter-spacing: 0.3em;
-          color: rgba(255,255,255,0.18);
+          color: rgba(255,255,255,0.4);
           margin: 0 0 20px 2px;
         }
 
@@ -212,13 +257,13 @@ export default function LogsPage() {
         }
         .emotion-room-spark-label {
           font-size: 9px;
-          color: rgba(255,255,255,0.15);
+          color: rgba(255,255,255,0.55);
           letter-spacing: 0.1em;
         }
         .emotion-room-spark {
           font-size: 12px;
           letter-spacing: 0.12em;
-          opacity: 0.55;
+          opacity: 0.8;
         }
 
         .emotion-room-bottom {
@@ -227,20 +272,20 @@ export default function LogsPage() {
         }
         .emotion-room-count {
           font-size: 13px; font-weight: 300;
-          color: rgba(255,255,255,0.3);
+          color: rgba(255,255,255,0.55);
           font-variant-numeric: tabular-nums;
           flex-shrink: 0;
         }
         .emotion-room-whisper {
           font-size: 11px;
-          color: rgba(255,255,255,0.2);
+          color: rgba(255,255,255,0.55);
           letter-spacing: 0.04em;
           margin: 0;
         }
 
         .emotion-room-arrow {
           font-size: 12px;
-          color: rgba(255,255,255,0.12);
+          color: rgba(255,255,255,0.);
           flex-shrink: 0;
         }
 
@@ -253,8 +298,16 @@ export default function LogsPage() {
         @keyframes logs-fade { 0%,100%{opacity:0.3} 50%{opacity:1} }
 
         .logs-total {
-          font-size: 11px; color: rgba(255,255,255,0.1);
+          font-size: 11px; color: rgba(255,255,255,0.3);
           text-align: center; margin-top: 40px; letter-spacing: 0.1em;
+        }
+
+        .summary-emerge {
+          animation: summary-in 0.8s cubic-bezier(0.16,1,0.3,1) forwards;
+        }
+        @keyframes summary-in {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
 
@@ -332,6 +385,75 @@ export default function LogsPage() {
                   </div>
                 );
               })}
+
+              {/* トリガー */}
+              {sortedTriggers.length > 0 && (
+                <div style={{ marginTop: "40px" }}>
+                  <p className="logs-section-label">よく出るトリガー</p>
+                  <div style={{
+                    borderRadius: "14px",
+                    border: "1px solid rgba(255,255,255,0.05)",
+                    overflow: "hidden",
+                  }}>
+                    {sortedTriggers.map(([trigger, count], i) => {
+                      const ratio = count / sortedTriggers[0][1];
+                      return (
+                        <div
+                          key={trigger}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                            padding: "13px 18px",
+                            borderBottom: i < sortedTriggers.length - 1
+                              ? "1px solid rgba(255,255,255,0.04)"
+                              : "none",
+                            background: "rgba(255,255,255,0.015)",
+                          }}
+                        >
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", width: "16px", textAlign: "right", flexShrink: 0 }}>
+                            {i + 1}
+                          </span>
+                          <span style={{ flex: 1, fontSize: "13px", color: "rgba(255,255,255,0.65)", letterSpacing: "0.04em" }}>
+                            {trigger}
+                          </span>
+                          <div style={{ width: "72px", height: "3px", borderRadius: "2px", background: "rgba(255,255,255,0.5)", flexShrink: 0 }}>
+                            <div style={{ width: `${ratio * 100}%`, height: "100%", borderRadius: "2px", background: "rgba(139,92,246,0.6)" }} />
+                          </div>
+                          <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", flexShrink: 0, width: "24px", textAlign: "right" }}>
+                            {count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ふりかえり */}
+              <div style={{ marginTop: "40px" }}>
+                <p className="logs-section-label">この{period}日のふりかえり</p>
+                <div style={{
+                  borderRadius: "14px",
+                  border: "1px solid rgba(139,92,246,0.15)",
+                  background: "rgba(139,92,246,0.04)",
+                  padding: "20px 22px",
+                  minHeight: "64px",
+                  display: "flex",
+                  alignItems: "center",
+                }}>
+                  {isGenerating ? (
+                    <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.18)", letterSpacing: "0.12em", margin: 0, animation: "logs-fade 2s ease-in-out infinite" }}>
+                      よみとり中...
+                    </p>
+                  ) : weeklySummary ? (
+                    <p className="summary-emerge" style={{ fontSize: "13px", color: "rgba(255,255,255,0.55)", lineHeight: "1.9", letterSpacing: "0.04em", margin: 0 }}>
+                      {weeklySummary}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
               <p className="logs-total">合計 {filtered.length} 件のきろく</p>
             </>
           )}

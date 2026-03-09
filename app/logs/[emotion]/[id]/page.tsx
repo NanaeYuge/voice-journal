@@ -126,7 +126,7 @@ export default function JournalDetailPage() {
         .detail-back:hover { color: rgba(139,92,246,0.9); }
         .detail-header-date {
           font-size: 12px;
-          color: rgba(255,255,255,0.25);
+          color: rgba(255,255,255,0.45);
           letter-spacing: 0.06em;
           margin: 0;
         }
@@ -174,21 +174,21 @@ export default function JournalDetailPage() {
         .detail-play-btn:hover { background: rgba(255,255,255,0.09); }
         .detail-player-label {
           font-size: 12px;
-          color: rgba(255,255,255,0.3);
+          color: rgba(255,255,255,0.5);
           letter-spacing: 0.08em;
         }
 
         /* AIの一言 */
         .detail-section-label {
-          font-size: 10px;
-          color: rgba(255,255,255,0.18);
+          font-size: 12px;
+          color: rgba(255,255,255,0.65);
           letter-spacing: 0.25em;
           margin: 0 0 10px 0;
           font-family: 'Zen Old Mincho', serif;
         }
         .detail-ai-message {
           font-size: 14px;
-          color: rgba(255,255,255,0.45);
+          color: rgba(255,255,255,0.65);
           line-height: 1.85;
           letter-spacing: 0.03em;
           margin: 0 0 32px 0;
@@ -199,7 +199,7 @@ export default function JournalDetailPage() {
         /* 文字起こし */
         .detail-transcript-toggle {
           font-size: 11px;
-          color: rgba(255,255,255,0.2);
+          color: rgba(255,255,255,0.45);
           background: none; border: none; cursor: pointer;
           letter-spacing: 0.1em; margin-bottom: 8px;
           font-family: 'Noto Sans JP', sans-serif;
@@ -209,7 +209,7 @@ export default function JournalDetailPage() {
         .detail-transcript-toggle:hover { color: rgba(255,255,255,0.45); }
         .detail-transcript {
           font-size: 13px;
-          color: rgba(255,255,255,0.3);
+          color: rgba(255,255,255,0.75);
           line-height: 1.85;
           letter-spacing: 0.02em;
           margin: 0 0 32px 0;
@@ -226,7 +226,7 @@ export default function JournalDetailPage() {
           border-radius: 10px;
           padding: 13px 15px;
           font-size: 13px;
-          color: rgba(255,255,255,0.55);
+          color: rgba(255,255,255,0.75);
           outline: none;
           resize: none;
           font-family: 'Noto Sans JP', sans-serif;
@@ -235,7 +235,7 @@ export default function JournalDetailPage() {
           box-sizing: border-box;
           transition: border-color 0.2s;
         }
-        .detail-memo::placeholder { color: rgba(255,255,255,0.15); }
+        .detail-memo::placeholder { color: rgba(255,255,255,0.35); }
         .detail-memo:focus { border-color: rgba(139,92,246,0.25); }
         .detail-memo-footer {
           display: flex; justify-content: flex-end;

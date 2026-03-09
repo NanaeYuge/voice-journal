@@ -79,6 +79,7 @@ export default function Home() {
         audio_path: fileName,
         emotion: data.emotion,
         transcript: data.transcript,
+        trigger: data.trigger,
       });
       setResult({ emotion: data.emotion, emoji: data.emoji, message: data.message });
     } catch (e) {
