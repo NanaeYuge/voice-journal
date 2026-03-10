@@ -5,13 +5,12 @@ import { createClient } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 
 type Journal = {
-  id: number;
-  created_at: string;
-  emotion: string;
-  transcript: string;
-  trigger?: string;
+    id: number;
+    created_at: string;
+    emotion: string;
+    transcript: string;
+    emotion_trigger?: string;
 };
-
 const emotionConfig: { [key: string]: { emoji: string; color: string; bg: string; whisper: string } } = {
   嬉しい: { emoji: "😊", color: "#fbbf24", bg: "rgba(251,191,36,0.05)",  whisper: "いい瞬間があったんだね" },
   悲しい: { emoji: "😢", color: "#7eb8f7", bg: "rgba(126,184,247,0.05)", whisper: "静かな日もあったね" },
@@ -117,15 +116,15 @@ export default function LogsPage() {
 
   const sorted = Object.entries(emotionMap).sort((a, b) => b[1].length - a[1].length);
 
-  const triggerMap: { [key: string]: number } = {};
-  filtered.forEach((j) => {
-    if (j.trigger) triggerMap[j.trigger] = (triggerMap[j.trigger] || 0) + 1;
-  });
-  const sortedTriggers = Object.entries(triggerMap).sort((a, b) => b[1] - a[1]);
+    const triggerMap: { [key: string]: number } = {};
+    filtered.forEach((j) => {
+       if (j.emotion_trigger) triggerMap[j.emotion_trigger] = (triggerMap[j.emotion_trigger] || 0) + 1;
+    });
+    const sortedTriggers = Object.entries(triggerMap).sort((a, b) => b[1] - a[1]);
 
-  return (
+    return (
     <>
-      <style>{`
+        <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;600&family=Noto+Sans+JP:wght@300;400;500&display=swap');
 
         .logs-root {

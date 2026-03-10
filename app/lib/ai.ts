@@ -110,7 +110,7 @@ export async function generateWeeklySummary(
 
   const lines = journals
     .slice(0, 20)
-    .map((j) => `・${j.emotion}（${j.trigger ?? "不明"}）: ${j.transcript?.slice(0, 60) ?? ""}`)
+    .map((j) => `・${j.emotion}（${(j as any).emotion_trigger ?? j.trigger ?? "不明"}）: ${j.transcript?.slice(0, 60) ?? ""}`)
     .join("\n");
 
   const completion = await openai.chat.completions.create({
