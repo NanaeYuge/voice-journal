@@ -17,9 +17,9 @@ export async function POST(request: NextRequest) {
     const transcript = await transcribeAudio(audioFile);
     console.log("transcript:", transcript);
 
-    const { emotion, trigger, message, emoji } = await analyzeEmotion(transcript);
+    const { emotion, trigger, message, emoji, nuance } = await analyzeEmotion(transcript);
 
-    return NextResponse.json({ transcript, emotion, emoji, message, trigger });
+    return NextResponse.json({ transcript, emotion, emoji, message, trigger, nuance });
   } catch (e: any) {
     console.error("API error:", e?.message);
     return NextResponse.json({ error: e?.message }, { status: 500 });
