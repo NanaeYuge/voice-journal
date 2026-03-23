@@ -1,8 +1,48 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-const emojiMap: Record<string, string> = {
+const allowedTriggers = [
+  "人間関係",
+  "仕事",
+  "体調",
+  "睡眠",
+  "家族",
+  "お金",
+  "自分自身",
+  "その他",
+] as const;
+
+const allowedEmotions = [
+  "嬉しい",
+  "悲しい",
+  "怒り",
+  "不安",
+  "穏やか",
+  "疲れ",
+] as const;
+
+type Trigger = (typeof allowedTriggers)[number];
+type Emotion = (typeof allowedEmotions)[number];
+
+type EmotionAnalysis = {
+  emotion: Emotion; // 内部集計用。基本はユーザーに見せない
+  trigger: Trigger;
+  message: string;
+  emoji: string;
+  nuance: string; // ユーザーに見せる主役
+};
+
+type WeeklyJournalInput = {
+  emotion?: string;
+  trigger?: string;
+  transcript?: string;
+  nuance?: string;
+};
+
+const emotionMap: Record<Emotion, string> = {
   嬉しい: "😊",
   悲しい: "😢",
   怒り: "😠",
@@ -11,28 +51,90 @@ const emojiMap: Record<string, string> = {
   疲れ: "😴",
 };
 
-const allowedEmotions = ["嬉しい", "悲しい", "怒り", "不安", "穏やか", "疲れ"];
-const allowedTriggers = ["人間関係", "仕事", "体調", "睡眠", "家族", "お金", "自分自身", "その他"];
+// -------------------------
+// 共通サニタイズ
+// -------------------------
 
-// 音声ファイルを文字起こし
+function sanitizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function sanitizeEmotion(value: unknown): Emotion {
+  return allowedEmotions.includes(value as Emotion)
+    ? (value as Emotion)
+    : "穏やか";
+}
+
+function sanitizeTrigger(value: unknown): Trigger {
+  return allowedTriggers.includes(value as Trigger)
+    ? (value as Trigger)
+    : "その他";
+}
+
+function sanitizeMessage(value: unknown): string {
+  const fallback = "話してくれてありがとう";
+  const text = sanitizeText(value);
+  if (!text) return fallback;
+  return text.slice(0, 32);
+}
+
+function sanitizeNuance(value: unknown): string {
+  const fallback = "少し言葉にしながら整理している感じ";
+  const text = sanitizeText(value);
+  if (!text) return fallback;
+  return text.slice(0, 40);
+}
+
+function safeJsonParse(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // ```json ... ``` のようなケースに最低限対応
+    try {
+      const cleaned = raw.replace(/```json|```/g, "").trim();
+      return JSON.parse(cleaned);
+    } catch {
+      return {};
+    }
+  }
+}
+
+// -------------------------
+// 音声文字起こし
+// -------------------------
+
 export async function transcribeAudio(file: File): Promise<string> {
   const transcription = await openai.audio.transcriptions.create({
     file,
     model: "whisper-1",
     language: "ja",
   });
-  return transcription.text;
+
+  return transcription.text.trim();
 }
 
-// テキストから感情・トリガー・メッセージを解析
-export async function analyzeEmotion(transcript: string): Promise<{
-  emotion: string;
-  trigger: string;
-  message: string;
-  emoji: string;
-}> {
+// -------------------------
+// 単体記録の分析
+// -------------------------
+
+export async function analyzeEmotion(
+  transcript: string
+): Promise<EmotionAnalysis> {
+  const safeTranscript = transcript.trim();
+
+  if (!safeTranscript) {
+    return {
+      emotion: "穏やか",
+      trigger: "その他",
+      message: "話してくれてありがとう",
+      emoji: emotionMap["穏やか"],
+      nuance: "まだうまく言葉にならない感じ",
+    };
+  }
+
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
+    temperature: 0.3,
     messages: [
       {
         role: "system",
@@ -40,97 +142,171 @@ export async function analyzeEmotion(transcript: string): Promise<{
 出力は必ずJSONオブジェクトのみ。前置き・説明・マークダウン・コードブロックは禁止。
 
 返却形式:
-{"emotion":"...","message":"...","trigger":"..."}
+{"emotion":"...","nuance":"...","message":"...","trigger":"..."}
 
-emotion は次のいずれか1つ:
+emotion は次のいずれか1つ（内部集計用・基本的にユーザーには見せない）:
 "嬉しい","悲しい","怒り","不安","穏やか","疲れ"
 
-判定基準:
-しんどい/疲れた → 疲れ
-悲しい/寂しい → 悲しい
-イライラ/怒った → 怒り
-心配/不安 → 不安
-嬉しい/よかった → 嬉しい
-穏やか/落ち着いた → 穏やか
+emotion のルール:
+- これはユーザー表示用ではなく、内部集計用です
+- 感情を厳密に断定する必要はありません
+- 複雑で判断しにくい場合は "穏やか" に逃がして構いません
+- ただし transcript 全体の雰囲気に明らかな特徴がある場合は近いものを選んでください
 
-trigger は次のいずれか1つ（文全体を見て最も中心的な原因を1つだけ選ぶ）:
+nuance（ユーザーに見せる気持ちの言葉）:
+- 20〜40文字
+- 感情を断定・分類しない
+- 話した内容のニュアンスをやわらかく映し返す
+- 「〜な気持ち」「〜な感じ」「〜かな」など、やさしい表現にする
+- 複数の感情が混ざっている場合は、その混ざり方をそのまま表現する
+- ラベルっぽくしない
+
+良い例:
+"少し疲れながらも、気持ちを整理したい感じ"
+"家族のことがずっと心に引っかかっている感じ"
+"ほっとした部分もあるけど、まだ複雑な気持ちかな"
+"自分のことを責めながらも、整理したい気持ち"
+
+悪い例:
+"穏やかな気持ち"
+"不安を感じています"
+"怒りがあります"
+
+trigger は次のいずれか1つ:
 "人間関係","仕事","体調","睡眠","家族","お金","自分自身","その他"
 
-判定基準:
-人や関係性の話 → 人間関係
-職場/勉強/タスクの話 → 仕事
-体の疲れ/病気/頭痛 → 体調
-眠れない/寝すぎ → 睡眠
-家族/パートナー/夫婦/恋人/結婚の話 → 家族
-お金/費用の話 → お金
-自分の気持ち/将来/自己嫌悪 → 自分自身
-それ以外 → その他
-
-複数当てはまる場合は感情の直接原因を優先する。
-例: 家族のことで眠れない → 家族 / 仕事が忙しくて疲れた → 仕事 / 将来が不安で眠れない → 自分自身
+trigger のルール:
+- 文全体を見て、最も中心的なテーマを1つだけ選ぶ
+- 複数候補がある場合は、その記録の中心にあったものを優先する
 
 message の条件:
-- 20文字以内
+- 12〜32文字
 - 決めつけない
 - アドバイスしない
 - 命令しない
 - 励ましすぎない
 - 評価しない
-- やさしく受け止める一言のみ
+- やさしく受け止める一言だけにする
 
-良い例: "話してくれてありがとう" / "少し疲れてたのかな" / "大変だったかもしれないね"
-悪い例: "もっと休んでください" / "前向きに考えましょう" / "頑張ってね"`,
+良い例:
+"話してくれてありがとう"
+"少し大変だったのかもしれないね"
+"今の気持ちを置いてくれてありがとう"
+"まだ心に残っていることがあるのかな"`,
       },
-      { role: "user", content: transcript },
+      {
+        role: "user",
+        content: safeTranscript,
+      },
     ],
   });
 
-  const raw = completion.choices[0].message.content || "{}";
-  let parsed: Record<string, string> = {};
-  try {
-    parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-  } catch (e) {
-    console.error("parse error:", raw);
-  }
+  const raw = completion.choices[0].message.content ?? "{}";
+  const parsed = safeJsonParse(raw);
 
-  const emotion = allowedEmotions.includes(parsed.emotion) ? parsed.emotion : "穏やか";
-  const trigger = allowedTriggers.includes(parsed.trigger) ? parsed.trigger : "その他";
-  const message = parsed.message || "話してくれてありがとう";
-  const emoji = emojiMap[emotion];
+  const emotion = sanitizeEmotion(parsed.emotion);
+  const trigger = sanitizeTrigger(parsed.trigger);
+  const message = sanitizeMessage(parsed.message);
+  const nuance = sanitizeNuance(parsed.nuance);
 
-  return { emotion, trigger, message, emoji };
+  return {
+    emotion,
+    trigger,
+    message,
+    emoji: emotionMap[emotion],
+    nuance,
+  };
 }
 
-// 週次ふりかえりを生成
+// -------------------------
+// 週次ふりかえり
+// -------------------------
+
 export async function generateWeeklySummary(
-  journals: { emotion: string; trigger?: string; transcript?: string }[],
+  journals: WeeklyJournalInput[],
   period: number
 ): Promise<string | null> {
-  if (journals.length === 0) return null;
+  if (!journals.length) return null;
 
-  const lines = journals
-    .slice(0, 20)
-    .map((j) => `・${j.emotion}（${(j as any).emotion_trigger ?? j.trigger ?? "不明"}）: ${j.transcript?.slice(0, 60) ?? ""}`)
+  const normalized = journals
+    .map((journal) => {
+      const trigger = sanitizeTrigger(journal.trigger);
+      const nuance = sanitizeText(journal.nuance).slice(0, 60);
+      const transcript = sanitizeText(journal.transcript).slice(0, 100);
+
+      return {
+        trigger,
+        nuance,
+        transcript,
+      };
+    })
+    .filter((journal) => journal.nuance || journal.transcript)
+    .slice(0, 20);
+
+  if (!normalized.length) return null;
+
+  const lines = normalized
+    .map((journal, index) => {
+      const parts: string[] = [`${index + 1}. テーマ:${journal.trigger}`];
+
+      if (journal.nuance) {
+        parts.push(`ニュアンス:${journal.nuance}`);
+      }
+
+      if (journal.transcript) {
+        parts.push(`内容:${journal.transcript}`);
+      }
+
+      return parts.join(" / ");
+    })
     .join("\n");
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
+    temperature: 0.4,
+    max_tokens: 180,
     messages: [
       {
         role: "system",
         content: `あなたは感情整理アプリの優しいナレーターです。
-ユーザーの${period}日間のきろくをもとに、ふりかえりの一言を生成してください。
+ユーザーの直近${period}日間の記録をもとに、週次ふりかえり文を1つ生成してください。
 
-条件：
-- 60文字以内
-- 決めつけない・アドバイスしない・評価しない
-- ただ静かに受け止める文体
-- 出力はテキストのみ（JSONや記号不要）`,
+目的:
+- 感情を1つに分類することではなく、
+  どんなテーマが続いていたか
+  どんな気持ちの流れがあったか
+  をやわらかく振り返ること
+- 自己理解につながる、静かで自然な要約にすること
+
+出力条件:
+- 70文字以内
+- テキストのみ
+- 決めつけない
+- アドバイスしない
+- 命令しない
+- 評価しない
+- 「人間関係が多かったです」のような機械的集計文にしない
+- 「家族のことが心に残る日や、仕事の疲れが重なる日が続いていたみたい」のように、流れが見える自然な文にする
+- 感情ラベル（悲しい、不安、怒り、穏やか等）をそのまま並べない
+- 可能なら、複数のテーマや揺れをやさしくまとめる
+
+良い例:
+- 家族のことが心に残る日や、自分を気にかけたい日が続いていたみたい
+- 仕事の疲れや人とのことが、少しずつ重なっていた週だったのかもしれないね
+- 自分自身のことを考える日と、家族のことで揺れる日が重なっていたみたい
+
+悪い例:
+- 不安と疲れが多い1週間でした
+- 家族が3件、仕事が2件ありました
+- 前向きに過ごしましょう`,
       },
-      { role: "user", content: lines },
+      {
+        role: "user",
+        content: lines,
+      },
     ],
-    max_tokens: 120,
   });
 
-  return completion.choices[0].message.content?.trim() ?? null;
+  const summary = completion.choices[0].message.content?.trim() ?? "";
+  return summary || null;
 }

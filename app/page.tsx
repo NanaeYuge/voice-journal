@@ -13,6 +13,7 @@ export default function Home() {
     emotion: string;
     emoji: string;
     message: string;
+    nuance: string;
   } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -79,9 +80,10 @@ export default function Home() {
         audio_path: fileName,
         emotion: data.emotion,
         transcript: data.transcript,
-        emotion_trigger: data.trigger,  // ← trigger → emotion_trigger
+        emotion_trigger: data.trigger,
+        nuance: data.nuance,
       });
-      setResult({ emotion: data.emotion, emoji: data.emoji, message: data.message });
+      setResult({ emotion: data.emotion, emoji: data.emoji, message: data.message, nuance: data.nuance });
     } catch (e) {
       console.error(e);
     } finally {
@@ -389,7 +391,7 @@ export default function Home() {
                 }
             </h1>
             {!isRecording && !isSilence && !isAnalyzing && !result && (
-              <p className="vj-hint">ボタンを押すだけでOK</p>
+              <p className="vj-hint">ボタンを押すだけで話せるよ</p>
             )}
           </div>
 
@@ -428,7 +430,7 @@ export default function Home() {
               ) : isSilence ? null : (
                 <>
                   <span className="vj-btn-icon">{isRecording ? "■" : "●"}</span>
-                  <span className="vj-btn-label">{isRecording ? "やめる" : "録音"}</span>
+                  <span className="vj-btn-label">{isRecording ? "やめる" : "話す"}</span>
                 </>
               )}
             </button>
@@ -439,7 +441,7 @@ export default function Home() {
               <span className="vj-result-emoji">{result.emoji}</span>
               <div className="vj-result-card">
                 <p className="vj-result-emotion">
-                  今は<span>「{result.emotion}」</span>な気持ちかな
+                  {result.nuance}
                 </p>
                 <p className="vj-result-msg">{result.message}</p>
               </div>
