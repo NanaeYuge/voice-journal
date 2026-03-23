@@ -11,6 +11,7 @@ type Journal = {
   transcript: string;
   audio_path: string;
   message?: string;
+  nuance?: string;
 };
 
 const emotionConfig: { [key: string]: { emoji: string; color: string } } = {
@@ -267,74 +268,76 @@ export default function JournalDetailPage() {
         </header>
 
         <div className="detail-body">
-          <div className="detail-emotion">
-            <span className="detail-emotion-emoji">{cfg.emoji}</span>
-            <span className="detail-emotion-name" style={{ color: cfg.color }}>{emotion}</span>
-          </div>
+            <div className="detail-emotion">
+                <span className="detail-emotion-emoji">{cfg.emoji}</span>
+                <span className="detail-emotion-name" style={{ color: cfg.color }}>
+                    {journal.nuance || emotion}
+                </span>
+            </div>
 
           {/* 音声プレイヤー */}
-          {audioUrl && (
+            {audioUrl && (
             <>
-              <audio
+                <audio
                 ref={audioRef}
                 src={audioUrl}
                 onEnded={() => setIsPlaying(false)}
-              />
-              <div className="detail-player" onClick={togglePlay}>
-                <div className="detail-play-btn">
-                  {isPlaying ? "■" : "▶"}
-                </div>
+                />
+                <div className="detail-player" onClick={togglePlay}>
+                    <div className="detail-play-btn">
+                        {isPlaying ? "■" : "▶"}
+                    </div>
                 <span className="detail-player-label">
-                  {isPlaying ? "再生中..." : "音声を聴く"}
+                    {isPlaying ? "再生中..." : "音声を聴く"}
                 </span>
-              </div>
+                </div>
             </>
-          )}
+            )}
 
           {/* AIの一言 */}
-          {journal.message && (
+            {journal.message && (
             <>
-              <p className="detail-section-label">AIからの一言</p>
-              <p className="detail-ai-message">{journal.message}</p>
+                <p className="detail-section-label">AIからの一言</p>
+                <p className="detail-ai-message">{journal.message}</p>
             </>
-          )}
+            )}
 
-          <hr className="detail-divider" />
+            <hr className="detail-divider" />
 
           {/* 文字起こし（折りたたみ） */}
-          {journal.transcript && (
+            {journal.transcript && (
             <>
-              <button
+                <button
                 className="detail-transcript-toggle"
                 onClick={() => setShowTranscript(!showTranscript)}
-              >
+                >
                 {showTranscript ? "▾ 文字起こしを閉じる" : "▸ 文字起こしを見る"}
-              </button>
-              {showTranscript && (
+                </button>
+                {showTranscript && (
                 <p className="detail-transcript">{journal.transcript}</p>
-              )}
+                )}
             </>
-          )}
+            )}
 
-          <hr className="detail-divider" />
+            <hr className="detail-divider" />
 
           {/* 気づきメモ */}
-          <div className="detail-memo-wrap">
-            <p className="detail-section-label">気づきメモ（任意）</p>
+            <div className="detail-memo-wrap">
+                <p className="detail-section-label">気づきメモ（任意）</p>
             <textarea
-              className="detail-memo"
-              rows={2}
-              placeholder="ひとことだけ残すなら..."
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
+                className="detail-memo"
+                rows={2}
+                placeholder="ひとことだけ残すなら..."
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
             />
             <div className="detail-memo-footer">
-              {memoSaved && <span className="detail-memo-saved">保存したよ</span>}
-              <button className="detail-memo-btn" onClick={saveMemo}>保存する</button>
+                {memoSaved && <span className="detail-memo-saved">保存したよ</span>}
+                <button className="detail-memo-btn" onClick={saveMemo}>保存する</button>
             </div>
-          </div>
+            </div>
         </div>
-      </div>
+        </div>
     </>
-  );
+    );
 }
