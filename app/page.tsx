@@ -75,7 +75,7 @@ export default function Home() {
       formData.append("audio", blob, `recording.${ext}`);
       const res = await fetch("/api/analyze", { method: "POST", body: formData });
       const data = await res.json();
-      await supabase.from("journals").insert({
+      const { error: insertError } = await supabase.from("journals").insert({
         user_id: user.id,
         audio_path: fileName,
         emotion: data.emotion,
@@ -83,6 +83,9 @@ export default function Home() {
         emotion_trigger: data.trigger,
         nuance: data.nuance,
       });
+      if (insertError) {
+        console.error("insert error:", JSON.stringify(insertError));
+      }
       setResult({ emotion: data.emotion, emoji: data.emoji, message: data.message, nuance: data.nuance });
     } catch (e) {
       console.error(e);

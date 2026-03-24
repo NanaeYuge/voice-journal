@@ -52,7 +52,7 @@ const TERMS = {
     sections: [
       {
         heading: "1. Overview",
-        body: "Voice Journal (the ’Service’) is a journaling service that uses AI to analyze emotions from voice recordings and help users deepen self-understanding.",
+        body: "Voice Journal (the ’Service’’) is a journaling service that uses AI to analyze emotions from voice recordings and help users deepen self-understanding.",
       },
       {
         heading: "2. Eligibility",
