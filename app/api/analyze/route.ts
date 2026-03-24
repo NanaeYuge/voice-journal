@@ -79,17 +79,18 @@ export async function POST(request: NextRequest) {
 
     console.error("[/api/analyze] ERROR message:", message);
 
-    return NextResponse.json(
-      {
-        error: message,
-        transcript: "",
-        emotion: "穏やか",
-        emoji: "😌",
-        message: "話してくれてありがとう",
-        trigger: "その他",
-        nuance: "少し言葉にしながら整理している感じ",
-      },
-      { status: 500 }
-    );
+    const responsePayload = {
+  __route_version: "2026-03-24-1345",
+  transcript,
+  emotion: result.emotion,
+  emoji: result.emoji,
+  message: result.message,
+  trigger: result.trigger,
+  nuance: result.nuance || "少し言葉にしながら整理している感じ",
+};
+
+console.log("[/api/analyze] final response payload:", responsePayload);
+
+return NextResponse.json(responsePayload);
   }
 }
