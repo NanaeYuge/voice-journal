@@ -75,6 +75,7 @@ export default function Home() {
       formData.append("audio", blob, `recording.${ext}`);
       const res = await fetch("/api/analyze", { method: "POST", body: formData });
       const data = await res.json();
+      console.log("API response:", JSON.stringify(data)); // ← この行を追加
       const { error: insertError } = await supabase.from("journals").insert({
         user_id: user.id,
         audio_path: fileName,
