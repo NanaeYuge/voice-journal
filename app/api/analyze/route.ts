@@ -1,7 +1,5 @@
-console.log("[route.ts] analyze route version 2026-03-24-1335");
-
 import { NextRequest, NextResponse } from "next/server";
-import { transcribeAudio, analyzeEmotion } from "@/app/lib/ai";
+import { transcribeAudio, analyzeEmotion } from "../../lib/ai";
 
 export const maxDuration = 30;
 
@@ -9,10 +7,7 @@ export async function POST(request: NextRequest) {
   console.log("[/api/analyze] POST start");
 
   try {
-    console.log("[/api/analyze] reading formData...");
     const formData = await request.formData();
-    console.log("[/api/analyze] formData loaded");
-
     const audio = formData.get("audio");
 
     if (!audio) {
@@ -27,12 +22,8 @@ export async function POST(request: NextRequest) {
 
     console.log("[/api/analyze] audio type:", audio.type);
     console.log("[/api/analyze] audio size:", audio.size);
-    console.log("[/api/analyze] audio name:", audio.name);
 
-    console.log("[/api/analyze] converting audio to arrayBuffer...");
     const audioBuffer = await audio.arrayBuffer();
-    console.log("[/api/analyze] audioBuffer byteLength:", audioBuffer.byteLength);
-
     const originalType = audio.type || "audio/mp4";
     const ext =
       originalType.includes("mp4") || originalType.includes("m4a")
@@ -43,23 +34,16 @@ export async function POST(request: NextRequest) {
       type: originalType,
     });
 
-    console.log("[/api/analyze] normalized audio file:", {
-      name: audioFile.name,
-      type: audioFile.type,
-      size: audioFile.size,
-    });
-
     console.log("[/api/analyze] before transcribeAudio");
     const transcript = await transcribeAudio(audioFile);
-    console.log("[/api/analyze] after transcribeAudio");
     console.log("[/api/analyze] transcript:", transcript);
 
     console.log("[/api/analyze] before analyzeEmotion");
     const result = await analyzeEmotion(transcript);
-    console.log("[/api/analyze] after analyzeEmotion");
-    console.log("[/api/analyze] analyze result:", result);
+    console.log("[/api/analyze] after analyzeEmotion:", result);
 
     const responsePayload = {
+      __route_version: "2026-03-24-1345",
       transcript,
       emotion: result.emotion,
       emoji: result.emoji,
@@ -68,7 +52,7 @@ export async function POST(request: NextRequest) {
       nuance: result.nuance || "少し言葉にしながら整理している感じ",
     };
 
-    console.log("[/api/analyze] response payload:", responsePayload);
+    console.log("[/api/analyze] final response payload:", responsePayload);
 
     return NextResponse.json(responsePayload);
   } catch (e: unknown) {
@@ -79,18 +63,17 @@ export async function POST(request: NextRequest) {
 
     console.error("[/api/analyze] ERROR message:", message);
 
-    const responsePayload = {
-  __route_version: "2026-03-24-1345",
-  transcript,
-  emotion: result.emotion,
-  emoji: result.emoji,
-  message: result.message,
-  trigger: result.trigger,
-  nuance: result.nuance || "少し言葉にしながら整理している感じ",
-};
-
-console.log("[/api/analyze] final response payload:", responsePayload);
-
-return NextResponse.json(responsePayload);
+    return NextResponse.json(
+      {
+        error: message,
+        transcript: "",
+        emotion: "穏やか",
+        emoji: "😌",
+        message: "話してくれてありがとう",
+        trigger: "その他",
+        nuance: "少し言葉にしながら整理している感じ",
+      },
+      { status: 500 }
+    );
   }
 }
