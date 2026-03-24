@@ -35,22 +35,18 @@ export default function Home() {
 
   useEffect(() => {
     const checkUser = async () => {
-      console.log("[page] checking user...");
       const { data, error } = await supabase.auth.getUser();
 
       if (error) {
-        console.error("[page] getUser error:", error);
         router.push("/login");
         return;
       }
 
       if (!data.user) {
-        console.log("[page] no user -> redirect login");
         router.push("/login");
         return;
       }
 
-      console.log("[page] user ok:", data.user.id);
     };
 
     checkUser();
@@ -58,7 +54,6 @@ export default function Home() {
 
   const startRecording = async () => {
     try {
-      console.log("[page] startRecording");
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -74,20 +69,13 @@ export default function Home() {
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
-        console.log("[page] ondataavailable size:", e.data.size);
         chunksRef.current.push(e.data);
       };
 
       mediaRecorder.onstop = async () => {
-        console.log("[page] mediaRecorder.onstop");
         streamRef.current?.getTracks().forEach((t) => t.stop());
 
         const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
-        console.log("[page] blob created:", {
-          type: blob.type,
-          size: blob.size,
-          chunks: chunksRef.current.length,
-        });
 
         await analyzeAndSave(blob);
       };
@@ -96,9 +84,7 @@ export default function Home() {
       setIsRecording(true);
       setResult(null);
 
-      console.log("[page] recording started. mimeType:", mimeType);
     } catch (error) {
-      console.error("[page] startRecording ERROR:", error);
       setIsRecording(false);
       setIsSilence(false);
       setIsAnalyzing(false);
@@ -106,7 +92,6 @@ export default function Home() {
   };
 
   const stopRecording = () => {
-    console.log("[page] stopRecording");
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
 
@@ -114,118 +99,77 @@ export default function Home() {
     setTimeout(() => {
       setIsSilence(false);
       setIsAnalyzing(true);
-      console.log("[page] silence finished -> analyzing true");
     }, 550);
   };
 
   const analyzeAndSave = async (blob: Blob) => {
-    console.log("[page] analyzeAndSave start");
+  try {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
 
-    try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) throw new Error("ユーザー取得に失敗しました");
 
-      if (userError) {
-        console.error("[page] getUser error:", userError);
-        throw new Error("ユーザー取得に失敗しました");
-      }
+    const user = userData.user;
+    if (!user) throw new Error("ユーザーが見つかりません");
 
-      const user = userData.user;
-      if (!user) {
-        console.error("[page] no user found");
-        throw new Error("ユーザーが見つかりません");
-      }
+    const ext = mimeTypeRef.current.includes("mp4") ? "mp4" : "webm";
+    const fileName = `${user.id}/${Date.now()}.${ext}`;
 
-      console.log("[page] current user:", user.id);
+    const { error: uploadError } = await supabase.storage
+      .from("voice-logs")
+      .upload(fileName, blob);
 
-      const ext = mimeTypeRef.current.includes("mp4") ? "mp4" : "webm";
-      const fileName = `${user.id}/${Date.now()}.${ext}`;
+    if (uploadError) throw new Error(`音声アップロード失敗: ${uploadError.message}`);
 
-      console.log("[page] uploading audio to storage:", fileName);
+    const formData = new FormData();
+    formData.append("audio", blob, `recording.${ext}`);
 
-      const { error: uploadError } = await supabase.storage
-        .from("voice-logs")
-        .upload(fileName, blob);
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      body: formData,
+    });
 
-      if (uploadError) {
-        console.error("[page] storage upload error:", uploadError);
-        throw new Error(`音声アップロード失敗: ${uploadError.message}`);
-      }
+    const data: AnalyzeResponse = await res.json();
 
-      console.log("[page] storage upload success");
+    if (!res.ok) throw new Error(data.error || "感情解析APIでエラーが発生しました");
 
-      const formData = new FormData();
-      formData.append("audio", blob, `recording.${ext}`);
+    const safeEmotion = data.emotion || "穏やか";
+    const safeEmoji = data.emoji || "😌";
+    const safeMessage = data.message || "話してくれてありがとう";
+    const safeNuance = data.nuance || "少し言葉にしながら整理している感じ";
+    const safeTranscript = data.transcript || "";
+    const safeTrigger = data.trigger || "その他";
 
-      console.log("[page] calling /api/analyze ...");
-
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        body: formData,
-      });
-
-      console.log("[page] /api/analyze status:", res.status, res.statusText);
-
-      const data: AnalyzeResponse = await res.json();
-      console.log("[page] API response:", JSON.stringify(data, null, 2));
-
-      if (!res.ok) {
-        console.error("[page] analyze api returned non-ok:", data);
-        throw new Error(data.error || "感情解析APIでエラーが発生しました");
-      }
-
-      const safeEmotion = data.emotion || "穏やか";
-      const safeEmoji = data.emoji || "😌";
-      const safeMessage = data.message || "話してくれてありがとう";
-      const safeNuance =
-        data.nuance || "少し言葉にしながら整理している感じ";
-      const safeTranscript = data.transcript || "";
-      const safeTrigger = data.trigger || "その他";
-
-      const insertPayload = {
+    const { error: insertError } = await supabase
+      .from("journals")
+      .insert({
         user_id: user.id,
         audio_path: fileName,
         emotion: safeEmotion,
         transcript: safeTranscript,
         emotion_trigger: safeTrigger,
         nuance: safeNuance,
-      };
+      })
+      .select();
 
-      console.log("[page] insert payload:", JSON.stringify(insertPayload, null, 2));
+    if (insertError) throw new Error(`DB保存失敗: ${insertError.message}`);
 
-      const { data: insertedData, error: insertError } = await supabase
-        .from("journals")
-        .insert(insertPayload)
-        .select();
-
-      if (insertError) {
-        console.error("[page] insert error:", JSON.stringify(insertError, null, 2));
-        throw new Error(`DB保存失敗: ${insertError.message}`);
-      }
-
-      console.log("[page] insert success:", insertedData);
-
-      setResult({
-        emotion: safeEmotion,
-        emoji: safeEmoji,
-        message: safeMessage,
-        nuance: safeNuance,
-      });
-
-      console.log("[page] result state updated");
-    } catch (error) {
-      console.error("[page] analyzeAndSave ERROR:", error);
-
-      setResult({
-        emotion: "穏やか",
-        emoji: "😌",
-        message: "話してくれてありがとう",
-        nuance: "少し言葉にしながら整理している感じ",
-      });
-    } finally {
-      console.log("[page] analyzeAndSave finally -> analyzing false");
-      setIsAnalyzing(false);
-    }
-  };
+    setResult({
+      emotion: safeEmotion,
+      emoji: safeEmoji,
+      message: safeMessage,
+      nuance: safeNuance,
+    });
+  } catch (error) {
+    setResult({
+      emotion: "穏やか",
+      emoji: "😌",
+      message: "話してくれてありがとう",
+      nuance: "少し言葉にしながら整理している感じ",
+    });
+  } finally {
+    setIsAnalyzing(false);
+  }
+};
 
   return (
     <>
@@ -507,7 +451,6 @@ export default function Home() {
           <button
             className="vj-nav-btn vj-nav-btn--logout"
             onClick={async () => {
-              console.log("[page] logout clicked");
               await supabase.auth.signOut();
               router.push("/login");
             }}
