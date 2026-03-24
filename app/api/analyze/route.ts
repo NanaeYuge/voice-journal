@@ -18,8 +18,9 @@ export async function POST(request: NextRequest) {
     console.log("transcript:", transcript);
 
     const { emotion, trigger, message, emoji, nuance } = await analyzeEmotion(transcript);
+    console.log("nuance value:", nuance);
 
-    return NextResponse.json({ transcript, emotion, emoji, message, trigger, nuance });
+    return NextResponse.json({ transcript, emotion, emoji, message, trigger, nuance: nuance || "テストnuance" });
   } catch (e: any) {
     console.error("API error:", e?.message);
     return NextResponse.json({ error: e?.message }, { status: 500 });
