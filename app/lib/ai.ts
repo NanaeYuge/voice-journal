@@ -1,3 +1,4 @@
+console.log("[ai.ts] loaded version 2026-03-24-1335");
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -27,7 +28,7 @@ const allowedEmotions = [
 type Trigger = (typeof allowedTriggers)[number];
 type Emotion = (typeof allowedEmotions)[number];
 
-type EmotionAnalysis = {
+export type EmotionAnalysis = {
   emotion: Emotion; // 内部集計用。基本はユーザーに見せない
   trigger: Trigger;
   message: string;
@@ -89,7 +90,6 @@ function safeJsonParse(raw: string): Record<string, unknown> {
   try {
     return JSON.parse(raw);
   } catch {
-    // ```json ... ``` のようなケースに最低限対応
     try {
       const cleaned = raw.replace(/```json|```/g, "").trim();
       return JSON.parse(cleaned);
@@ -99,18 +99,39 @@ function safeJsonParse(raw: string): Record<string, unknown> {
   }
 }
 
+function fallbackEmotionAnalysis(): EmotionAnalysis {
+  const emotion: Emotion = "穏やか";
+  return {
+    emotion,
+    trigger: "その他",
+    message: "話してくれてありがとう",
+    emoji: emotionMap[emotion],
+    nuance: "少し言葉にしながら整理している感じ",
+  };
+}
+
 // -------------------------
 // 音声文字起こし
 // -------------------------
 
 export async function transcribeAudio(file: File): Promise<string> {
-  const transcription = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-    language: "ja",
-  });
+  console.log("[transcribeAudio] start");
 
-  return transcription.text.trim();
+  try {
+    const transcription = await openai.audio.transcriptions.create({
+      file,
+      model: "whisper-1",
+      language: "ja",
+    });
+
+    const text = transcription.text.trim();
+    console.log("[transcribeAudio] success:", text);
+
+    return text;
+  } catch (error) {
+    console.error("[transcribeAudio] ERROR:", error);
+    throw error;
+  }
 }
 
 // -------------------------
@@ -120,9 +141,14 @@ export async function transcribeAudio(file: File): Promise<string> {
 export async function analyzeEmotion(
   transcript: string
 ): Promise<EmotionAnalysis> {
+  console.log("[analyzeEmotion] start");
+
   const safeTranscript = transcript.trim();
+  console.log("[analyzeEmotion] transcript:", safeTranscript);
 
   if (!safeTranscript) {
+    console.log("[analyzeEmotion] empty transcript -> fallback");
+
     return {
       emotion: "穏やか",
       trigger: "その他",
@@ -132,13 +158,14 @@ export async function analyzeEmotion(
     };
   }
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.3,
-    messages: [
-      {
-        role: "system",
-        content: `あなたは感情整理アプリの分析APIです。
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content: `あなたは感情整理アプリの分析APIです。
 出力は必ずJSONオブジェクトのみ。前置き・説明・マークダウン・コードブロックは禁止。
 
 返却形式:
@@ -192,30 +219,49 @@ message の条件:
 "話してくれてありがとう"
 "少し大変だったのかもしれないね"
 "今の気持ちを置いてくれてありがとう"
-"まだ心に残っていることがあるのかな"`,
-      },
-      {
-        role: "user",
-        content: safeTranscript,
-      },
-    ],
-  });
+"まだ心に残っていることがあるのかな"
 
-  const raw = completion.choices[0].message.content ?? "{}";
-  const parsed = safeJsonParse(raw);
+必ずこの4つのキーを含めて返してください:
+emotion, trigger, message, nuance`,
+        },
+        {
+          role: "user",
+          content: safeTranscript,
+        },
+      ],
+    });
 
-  const emotion = sanitizeEmotion(parsed.emotion);
-  const trigger = sanitizeTrigger(parsed.trigger);
-  const message = sanitizeMessage(parsed.message);
-  const nuance = sanitizeNuance(parsed.nuance);
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    console.log("[analyzeEmotion] raw response:", raw);
 
-  return {
-    emotion,
-    trigger,
-    message,
-    emoji: emotionMap[emotion],
-    nuance,
-  };
+    const parsed = safeJsonParse(raw);
+    console.log("[analyzeEmotion] parsed:", parsed);
+
+    const emotion = sanitizeEmotion(parsed.emotion);
+    const trigger = sanitizeTrigger(parsed.trigger);
+    const message = sanitizeMessage(parsed.message);
+    const nuance = sanitizeNuance(parsed.nuance);
+
+    console.log("[analyzeEmotion] emotion value:", emotion);
+    console.log("[analyzeEmotion] trigger value:", trigger);
+    console.log("[analyzeEmotion] message value:", message);
+    console.log("[analyzeEmotion] nuance value:", nuance);
+
+    return {
+      emotion,
+      trigger,
+      message,
+      emoji: emotionMap[emotion],
+      nuance,
+    };
+  } catch (error) {
+    console.error("[analyzeEmotion] ERROR:", error);
+
+    const fallback = fallbackEmotionAnalysis();
+    console.log("[analyzeEmotion] fallback return:", fallback);
+
+    return fallback;
+  }
 }
 
 // -------------------------
@@ -226,6 +272,9 @@ export async function generateWeeklySummary(
   journals: WeeklyJournalInput[],
   period: number
 ): Promise<string | null> {
+  console.log("[generateWeeklySummary] start");
+  console.log("[generateWeeklySummary] journals length:", journals.length);
+
   if (!journals.length) return null;
 
   const normalized = journals
@@ -242,6 +291,8 @@ export async function generateWeeklySummary(
     })
     .filter((journal) => journal.nuance || journal.transcript)
     .slice(0, 20);
+
+  console.log("[generateWeeklySummary] normalized length:", normalized.length);
 
   if (!normalized.length) return null;
 
@@ -261,14 +312,17 @@ export async function generateWeeklySummary(
     })
     .join("\n");
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.4,
-    max_tokens: 180,
-    messages: [
-      {
-        role: "system",
-        content: `あなたは感情整理アプリの優しいナレーターです。
+  console.log("[generateWeeklySummary] prompt lines:", lines);
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      max_tokens: 180,
+      messages: [
+        {
+          role: "system",
+          content: `あなたは感情整理アプリの優しいナレーターです。
 ユーザーの直近${period}日間の記録をもとに、週次ふりかえり文を1つ生成してください。
 
 目的:
@@ -299,14 +353,20 @@ export async function generateWeeklySummary(
 - 不安と疲れが多い1週間でした
 - 家族が3件、仕事が2件ありました
 - 前向きに過ごしましょう`,
-      },
-      {
-        role: "user",
-        content: lines,
-      },
-    ],
-  });
+        },
+        {
+          role: "user",
+          content: lines,
+        },
+      ],
+    });
 
-  const summary = completion.choices[0].message.content?.trim() ?? "";
-  return summary || null;
+    const summary = completion.choices[0]?.message?.content?.trim() ?? "";
+    console.log("[generateWeeklySummary] summary:", summary);
+
+    return summary || null;
+  } catch (error) {
+    console.error("[generateWeeklySummary] ERROR:", error);
+    return null;
+  }
 }

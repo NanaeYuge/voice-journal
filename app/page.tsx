@@ -4,10 +4,19 @@ import { useState, useRef, useEffect } from "react";
 import { createClient } from "./lib/supabase";
 import { useRouter } from "next/navigation";
 
+type AnalyzeResponse = {
+  transcript?: string;
+  emotion?: string;
+  emoji?: string;
+  message?: string;
+  trigger?: string;
+  nuance?: string;
+  error?: string;
+};
+
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  // 追加：静寂フェーズ
   const [isSilence, setIsSilence] = useState(false);
   const [result, setResult] = useState<{
     emotion: string;
@@ -15,82 +24,205 @@ export default function Home() {
     message: string;
     nuance: string;
   } | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const mimeTypeRef = useRef<string>("audio/webm");
-  // ストリームをrefで保持
   const streamRef = useRef<MediaStream | null>(null);
+
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
     const checkUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) router.push("/login");
+      console.log("[page] checking user...");
+      const { data, error } = await supabase.auth.getUser();
+
+      if (error) {
+        console.error("[page] getUser error:", error);
+        router.push("/login");
+        return;
+      }
+
+      if (!data.user) {
+        console.log("[page] no user -> redirect login");
+        router.push("/login");
+        return;
+      }
+
+      console.log("[page] user ok:", data.user.id);
     };
+
     checkUser();
-  }, []);
+  }, [router, supabase]);
 
   const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    streamRef.current = stream; // ストリームを保存
-    const mimeType = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "audio/webm";
-    mimeTypeRef.current = mimeType;
-    const mediaRecorder = new MediaRecorder(stream, { mimeType });
-    mediaRecorderRef.current = mediaRecorder;
-    chunksRef.current = [];
-    mediaRecorder.ondataavailable = (e) => { chunksRef.current.push(e.data); };
-    mediaRecorder.onstop = async () => {
-      // マイクトラックを停止（🔴アイコン消える）
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
-      await analyzeAndSave(blob);
-    };
-    mediaRecorder.start();
-    setIsRecording(true);
-    setResult(null);
+    try {
+      console.log("[page] startRecording");
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "audio/webm";
+
+      mimeTypeRef.current = mimeType;
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        console.log("[page] ondataavailable size:", e.data.size);
+        chunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        console.log("[page] mediaRecorder.onstop");
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
+        console.log("[page] blob created:", {
+          type: blob.type,
+          size: blob.size,
+          chunks: chunksRef.current.length,
+        });
+
+        await analyzeAndSave(blob);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setResult(null);
+
+      console.log("[page] recording started. mimeType:", mimeType);
+    } catch (error) {
+      console.error("[page] startRecording ERROR:", error);
+      setIsRecording(false);
+      setIsSilence(false);
+      setIsAnalyzing(false);
+    }
   };
 
   const stopRecording = () => {
+    console.log("[page] stopRecording");
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
 
-    // 静寂フェーズ：0.55秒の"間"
     setIsSilence(true);
     setTimeout(() => {
       setIsSilence(false);
       setIsAnalyzing(true);
+      console.log("[page] silence finished -> analyzing true");
     }, 550);
   };
 
   const analyzeAndSave = async (blob: Blob) => {
+    console.log("[page] analyzeAndSave start");
+
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error("[page] getUser error:", userError);
+        throw new Error("ユーザー取得に失敗しました");
+      }
+
       const user = userData.user;
-      if (!user) return;
+      if (!user) {
+        console.error("[page] no user found");
+        throw new Error("ユーザーが見つかりません");
+      }
+
+      console.log("[page] current user:", user.id);
+
       const ext = mimeTypeRef.current.includes("mp4") ? "mp4" : "webm";
       const fileName = `${user.id}/${Date.now()}.${ext}`;
-      await supabase.storage.from("voice-logs").upload(fileName, blob);
+
+      console.log("[page] uploading audio to storage:", fileName);
+
+      const { error: uploadError } = await supabase.storage
+        .from("voice-logs")
+        .upload(fileName, blob);
+
+      if (uploadError) {
+        console.error("[page] storage upload error:", uploadError);
+        throw new Error(`音声アップロード失敗: ${uploadError.message}`);
+      }
+
+      console.log("[page] storage upload success");
+
       const formData = new FormData();
       formData.append("audio", blob, `recording.${ext}`);
-      const res = await fetch("/api/analyze", { method: "POST", body: formData });
-      const data = await res.json();
-      console.log("API response:", JSON.stringify(data)); // ← この行を追加
-      const { error: insertError } = await supabase.from("journals").insert({
+
+      console.log("[page] calling /api/analyze ...");
+
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      console.log("[page] /api/analyze status:", res.status, res.statusText);
+
+      const data: AnalyzeResponse = await res.json();
+      console.log("[page] API response:", JSON.stringify(data, null, 2));
+
+      if (!res.ok) {
+        console.error("[page] analyze api returned non-ok:", data);
+        throw new Error(data.error || "感情解析APIでエラーが発生しました");
+      }
+
+      const safeEmotion = data.emotion || "穏やか";
+      const safeEmoji = data.emoji || "😌";
+      const safeMessage = data.message || "話してくれてありがとう";
+      const safeNuance =
+        data.nuance || "少し言葉にしながら整理している感じ";
+      const safeTranscript = data.transcript || "";
+      const safeTrigger = data.trigger || "その他";
+
+      const insertPayload = {
         user_id: user.id,
         audio_path: fileName,
-        emotion: data.emotion,
-        transcript: data.transcript,
-        emotion_trigger: data.trigger,
-        nuance: data.nuance,
-      });
+        emotion: safeEmotion,
+        transcript: safeTranscript,
+        emotion_trigger: safeTrigger,
+        nuance: safeNuance,
+      };
+
+      console.log("[page] insert payload:", JSON.stringify(insertPayload, null, 2));
+
+      const { data: insertedData, error: insertError } = await supabase
+        .from("journals")
+        .insert(insertPayload)
+        .select();
+
       if (insertError) {
-        console.error("insert error:", JSON.stringify(insertError));
+        console.error("[page] insert error:", JSON.stringify(insertError, null, 2));
+        throw new Error(`DB保存失敗: ${insertError.message}`);
       }
-      setResult({ emotion: data.emotion, emoji: data.emoji, message: data.message, nuance: data.nuance });
-    } catch (e) {
-      console.error(e);
+
+      console.log("[page] insert success:", insertedData);
+
+      setResult({
+        emotion: safeEmotion,
+        emoji: safeEmoji,
+        message: safeMessage,
+        nuance: safeNuance,
+      });
+
+      console.log("[page] result state updated");
+    } catch (error) {
+      console.error("[page] analyzeAndSave ERROR:", error);
+
+      setResult({
+        emotion: "穏やか",
+        emoji: "😌",
+        message: "話してくれてありがとう",
+        nuance: "少し言葉にしながら整理している感じ",
+      });
     } finally {
+      console.log("[page] analyzeAndSave finally -> analyzing false");
       setIsAnalyzing(false);
     }
   };
@@ -193,7 +325,6 @@ export default function Home() {
           justify-content: center;
         }
 
-        /* 待機：3.5秒呼吸 */
         .vj-breath-ring {
           position: absolute;
           border-radius: 50%;
@@ -209,7 +340,6 @@ export default function Home() {
           100% { transform: scale(0.97); opacity: 0.6; }
         }
 
-        /* 録音中：月光の白寄り、3秒周期でゆっくり拡散 */
         .vj-rec-ring {
           position: absolute;
           border-radius: 50%;
@@ -225,7 +355,6 @@ export default function Home() {
           100% { transform: scale(1.12); opacity: 0; }
         }
 
-        /* ボタン本体 */
         .vj-btn {
           position: relative;
           z-index: 10;
@@ -249,13 +378,11 @@ export default function Home() {
           box-shadow: 0 0 0 1px rgba(139,92,246,0.25), 0 8px 32px rgba(91,33,182,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
         }
 
-        /* 録音中：月光ホワイト寄りの深みのある青白 */
         .vj-btn-recording {
           background: linear-gradient(150deg, #1a2340 0%, #c8d8f0 100%);
           box-shadow: 0 0 0 1px rgba(200,216,240,0.2), 0 8px 32px rgba(26,35,64,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
         }
 
-        /* 静寂フェーズ：ボタンがふっと沈む */
         .vj-btn-silence {
           background: #0d1220;
           box-shadow: 0 2px 12px rgba(0,0,0,0.5);
@@ -273,7 +400,6 @@ export default function Home() {
         .vj-btn-icon { font-size: 22px; line-height: 1; color: rgba(255,255,255,0.9); }
         .vj-btn-label { font-size: 11px; font-weight: 400; color: rgba(255,255,255,0.75); letter-spacing: 0.15em; }
 
-        /* 静寂中：何も表示しない（空ボタン） */
         .vj-btn-silence .vj-btn-icon,
         .vj-btn-silence .vj-btn-label { opacity: 0; }
 
@@ -314,7 +440,6 @@ export default function Home() {
           margin: 0 0 11px 0;
           letter-spacing: 0.04em;
         }
-        .vj-result-emotion span { color: #c4b5fd; }
         .vj-result-msg {
           font-size: 13px;
           color: rgba(255,255,255,0.38);
@@ -376,31 +501,48 @@ export default function Home() {
         <div className="vj-glow" />
 
         <nav className="vj-nav">
-          <button className="vj-nav-btn" onClick={() => router.push("/logs")}>きろく</button>
-          <button className="vj-nav-btn vj-nav-btn--logout" onClick={async () => {
-            await supabase.auth.signOut();
-            router.push("/login");
-          }}>ログアウト</button>
+          <button className="vj-nav-btn" onClick={() => router.push("/logs")}>
+            きろく
+          </button>
+          <button
+            className="vj-nav-btn vj-nav-btn--logout"
+            onClick={async () => {
+              console.log("[page] logout clicked");
+              await supabase.auth.signOut();
+              router.push("/login");
+            }}
+          >
+            ログアウト
+          </button>
         </nav>
 
         <div className="vj-content">
           <div className="vj-header">
             <p className="vj-label">Voice Journal</p>
             <h1 className="vj-title">
-                {isRecording
-                ? <>話してね<br />聴いてるよ</>
-                : isSilence
-                ? <span style={{ visibility: "hidden" }}>　</span>
-                : <>今の気持ちを<br />話してみて</>
-                }
+              {isRecording ? (
+                <>
+                  話してね
+                  <br />
+                  聴いてるよ
+                </>
+              ) : isSilence ? (
+                <span style={{ visibility: "hidden" }}>　</span>
+              ) : (
+                <>
+                  今の気持ちを
+                  <br />
+                  話してみて
+                </>
+              )}
             </h1>
+
             {!isRecording && !isSilence && !isAnalyzing && !result && (
               <p className="vj-hint">ボタンを押すだけで話せるよ</p>
             )}
           </div>
 
           <div className="vj-btn-wrap">
-            {/* 待機：呼吸リング */}
             {!isRecording && !isSilence && !isAnalyzing && (
               <>
                 <div className="vj-breath-ring vj-breath-ring-1" />
@@ -408,7 +550,7 @@ export default function Home() {
                 <div className="vj-breath-ring vj-breath-ring-3" />
               </>
             )}
-            {/* 録音中：月光の拡散リング */}
+
             {isRecording && (
               <>
                 <div className="vj-rec-ring vj-rec-ring-1" />
@@ -419,22 +561,35 @@ export default function Home() {
 
             <button
               className={`vj-btn ${
-                isSilence    ? "vj-btn-silence"
-                : isRecording  ? "vj-btn-recording"
-                : isAnalyzing  ? "vj-btn-analyzing"
-                : "vj-btn-idle"
+                isSilence
+                  ? "vj-btn-silence"
+                  : isRecording
+                  ? "vj-btn-recording"
+                  : isAnalyzing
+                  ? "vj-btn-analyzing"
+                  : "vj-btn-idle"
               }`}
-              onClick={isRecording ? stopRecording : !isSilence && !isAnalyzing ? startRecording : undefined}
+              onClick={
+                isRecording
+                  ? stopRecording
+                  : !isSilence && !isAnalyzing
+                  ? startRecording
+                  : undefined
+              }
               disabled={isSilence || isAnalyzing}
             >
               {isAnalyzing ? (
                 <div className="vj-dots">
-                  <div className="vj-dot" /><div className="vj-dot" /><div className="vj-dot" />
+                  <div className="vj-dot" />
+                  <div className="vj-dot" />
+                  <div className="vj-dot" />
                 </div>
               ) : isSilence ? null : (
                 <>
                   <span className="vj-btn-icon">{isRecording ? "■" : "●"}</span>
-                  <span className="vj-btn-label">{isRecording ? "やめる" : "話す"}</span>
+                  <span className="vj-btn-label">
+                    {isRecording ? "やめる" : "話す"}
+                  </span>
                 </>
               )}
             </button>
@@ -444,12 +599,13 @@ export default function Home() {
             <div className="vj-result">
               <span className="vj-result-emoji">{result.emoji}</span>
               <div className="vj-result-card">
-                <p className="vj-result-emotion">
-                  {result.nuance}
-                </p>
+                <p className="vj-result-emotion">{result.nuance}</p>
                 <p className="vj-result-msg">{result.message}</p>
               </div>
-              <button className="vj-logs-link" onClick={() => router.push("/logs")}>
+              <button
+                className="vj-logs-link"
+                onClick={() => router.push("/logs")}
+              >
                 過去のきろくを見る →
               </button>
             </div>
