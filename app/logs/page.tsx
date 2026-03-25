@@ -163,19 +163,9 @@ function RecordingModal({
                 </button>
               ) : (
                 <div className="modal-actions">
-                  <button
-                    className="modal-btn-primary"
-                    onClick={handleSave}
-                    disabled={isProcessing}
-                  >
+                    <button className="modal-btn-primary" onClick={handleSave} disabled={isProcessing}>
                     {isProcessing ? "保存中..." : "保存する"}
-                  </button>
-                  <button
-                    className="modal-btn-secondary"
-                    onClick={() => setAudioBlob(null)}
-                  >
-                    撮り直す
-                  </button>
+                    </button>
                 </div>
               )}
             </div>
