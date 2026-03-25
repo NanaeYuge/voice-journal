@@ -221,9 +221,10 @@ export default function LogsPage() {
       const window3d =   3 * 24 * 60 * 60 * 1000;
 
       const findNear = (ms: number): Journal | undefined =>
-        allData.find((j: Journal) =>
-          Math.abs(now - new Date(j.created_at).getTime() - ms) < window3d
-        );
+        allData.find((j: Journal) => {
+            const diff = now - new Date(j.created_at).getTime();
+            return Math.abs(diff - ms) < window3d;
+        });
 
       const yearMatch  = findNear(oneYear);
       const monthMatch = findNear(oneMonth);
@@ -246,7 +247,6 @@ export default function LogsPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               transcript: capsule.journal.transcript,
-              mode: "timecapsule",
             }),
           });
           const aiData = await aiRes.json();
@@ -258,7 +258,7 @@ export default function LogsPage() {
 
       setLoading(false);
     };
-    fetchJournals();
+      fetchJournals();
   }, []);
 
   useEffect(() => {
