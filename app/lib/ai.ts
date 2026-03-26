@@ -1,4 +1,4 @@
-console.log("[ai.ts] loaded version 2026-03-26-1200");
+console.log("[ai.ts] loaded version 2026-03-26-1400");
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -34,6 +34,7 @@ export type EmotionAnalysis = {
   message: string;
   emoji: string;
   nuance: string;
+  summary: string;
 };
 
 type WeeklyJournalInput = {
@@ -82,6 +83,13 @@ function sanitizeNuance(value: unknown): string {
   return text.slice(0, 40);
 }
 
+function sanitizeSummary(value: unknown): string {
+  const fallback = "";
+  const text = sanitizeText(value);
+  if (!text) return fallback;
+  return text.slice(0, 100);
+}
+
 function safeJsonParse(raw: string): Record<string, unknown> {
   try {
     return JSON.parse(raw);
@@ -103,22 +111,20 @@ function fallbackEmotionAnalysis(): EmotionAnalysis {
     message: "話してくれてありがとう",
     emoji: emotionMap[emotion],
     nuance: "少し言葉にしながら整理している感じ",
+    summary: "",
   };
 }
 
 export async function transcribeAudio(file: File): Promise<string> {
   console.log("[transcribeAudio] start");
-
   try {
     const transcription = await openai.audio.transcriptions.create({
       file,
       model: "whisper-1",
       language: "ja",
     });
-
     const text = transcription.text.trim();
     console.log("[transcribeAudio] success:", text);
-
     return text;
   } catch (error) {
     console.error("[transcribeAudio] ERROR:", error);
@@ -142,6 +148,7 @@ export async function analyzeEmotion(
       message: "話してくれてありがとう",
       emoji: emotionMap["穏やか"],
       nuance: "まだうまく言葉にならない感じ",
+      summary: "",
     };
   }
 
@@ -156,7 +163,7 @@ export async function analyzeEmotion(
 出力は必ずJSONオブジェクトのみ。前置き・説明・マークダウン・コードブロックは禁止。
 
 返却形式:
-{"emotion":"...","nuance":"...","message":"...","trigger":"..."}
+{"emotion":"...","nuance":"...","message":"...","trigger":"...","summary":"..."}
 
 emotion は次のいずれか1つ（内部集計用・基本的にユーザーには見せない）:
 "嬉しい","悲しい","怒り","不安","穏やか","疲れ"
@@ -185,6 +192,18 @@ nuance（ユーザーに見せる気持ちの言葉）:
 "穏やかな気持ち"
 "不安を感じています"
 "怒りがあります"
+
+summary（話した内容の要約）:
+- 1〜2文、50文字以内
+- 話した内容を客観的に短くまとめる
+- 「〜について話した」「〜と感じていた」のような形で
+- 感情の解釈ではなく、何を話したかの事実ベースで
+- ユーザーが「あ、これで合ってる」と確認できる内容に
+
+良い例:
+"今日たくさん寝れて元気だと話した"
+"夫との関係について悩んでいると話した"
+"仕事がうまくいかない日が続いていると話した"
 
 trigger は次のいずれか1つ:
 "人間関係","仕事","体調","睡眠","家族","お金","自分自身","その他"
@@ -221,8 +240,8 @@ message の条件:
 "しっかり休めて良かったです" → 敬語
 "前向きに頑張りましょう" → 命令・アドバイス
 
-必ずこの4つのキーを含めて返してください:
-emotion, trigger, message, nuance`,
+必ずこの5つのキーを含めて返してください:
+emotion, trigger, message, nuance, summary`,
         },
         {
           role: "user",
@@ -241,24 +260,12 @@ emotion, trigger, message, nuance`,
     const trigger = sanitizeTrigger(parsed.trigger);
     const message = sanitizeMessage(parsed.message);
     const nuance = sanitizeNuance(parsed.nuance);
+    const summary = sanitizeSummary(parsed.summary);
 
-    console.log("[analyzeEmotion] emotion value:", emotion);
-    console.log("[analyzeEmotion] trigger value:", trigger);
-    console.log("[analyzeEmotion] message value:", message);
-    console.log("[analyzeEmotion] nuance value:", nuance);
-
-    return {
-      emotion,
-      trigger,
-      message,
-      emoji: emotionMap[emotion],
-      nuance,
-    };
+    return { emotion, trigger, message, emoji: emotionMap[emotion], nuance, summary };
   } catch (error) {
     console.error("[analyzeEmotion] ERROR:", error);
-    const fallback = fallbackEmotionAnalysis();
-    console.log("[analyzeEmotion] fallback return:", fallback);
-    return fallback;
+    return fallbackEmotionAnalysis();
   }
 }
 
@@ -267,7 +274,6 @@ export async function generateWeeklySummary(
   period: number
 ): Promise<string | null> {
   console.log("[generateWeeklySummary] start");
-  console.log("[generateWeeklySummary] journals length:", journals.length);
 
   if (!journals.length) return null;
 
@@ -281,8 +287,6 @@ export async function generateWeeklySummary(
     .filter((journal) => journal.nuance || journal.transcript)
     .slice(0, 20);
 
-  console.log("[generateWeeklySummary] normalized length:", normalized.length);
-
   if (!normalized.length) return null;
 
   const lines = normalized
@@ -293,8 +297,6 @@ export async function generateWeeklySummary(
       return parts.join(" / ");
     })
     .join("\n");
-
-  console.log("[generateWeeklySummary] prompt lines:", lines);
 
   try {
     const completion = await openai.chat.completions.create({
@@ -345,8 +347,6 @@ export async function generateWeeklySummary(
     });
 
     const summary = completion.choices[0]?.message?.content?.trim() ?? "";
-    console.log("[generateWeeklySummary] summary:", summary);
-
     return summary || null;
   } catch (error) {
     console.error("[generateWeeklySummary] ERROR:", error);
