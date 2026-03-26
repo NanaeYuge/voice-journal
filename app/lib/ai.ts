@@ -1,4 +1,4 @@
-console.log("[ai.ts] loaded version 2026-03-24-1335");
+console.log("[ai.ts] loaded version 2026-03-26-1200");
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -29,11 +29,11 @@ type Trigger = (typeof allowedTriggers)[number];
 type Emotion = (typeof allowedEmotions)[number];
 
 export type EmotionAnalysis = {
-  emotion: Emotion; // 内部集計用。基本はユーザーに見せない
+  emotion: Emotion;
   trigger: Trigger;
   message: string;
   emoji: string;
-  nuance: string; // ユーザーに見せる主役
+  nuance: string;
 };
 
 type WeeklyJournalInput = {
@@ -51,10 +51,6 @@ const emotionMap: Record<Emotion, string> = {
   穏やか: "😌",
   疲れ: "😴",
 };
-
-// -------------------------
-// 共通サニタイズ
-// -------------------------
 
 function sanitizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -110,10 +106,6 @@ function fallbackEmotionAnalysis(): EmotionAnalysis {
   };
 }
 
-// -------------------------
-// 音声文字起こし
-// -------------------------
-
 export async function transcribeAudio(file: File): Promise<string> {
   console.log("[transcribeAudio] start");
 
@@ -134,10 +126,6 @@ export async function transcribeAudio(file: File): Promise<string> {
   }
 }
 
-// -------------------------
-// 単体記録の分析
-// -------------------------
-
 export async function analyzeEmotion(
   transcript: string
 ): Promise<EmotionAnalysis> {
@@ -148,7 +136,6 @@ export async function analyzeEmotion(
 
   if (!safeTranscript) {
     console.log("[analyzeEmotion] empty transcript -> fallback");
-
     return {
       emotion: "穏やか",
       trigger: "その他",
@@ -213,13 +200,26 @@ message の条件:
 - 命令しない
 - 励ましすぎない
 - 評価しない
-- やさしく受け止める一言だけにする
+- 敬語・丁寧語は禁止（「〜ですね」「〜ました」「〜です」は使わない）
+- 他人行儀な表現は禁止（「〜でよかったね」「〜ですね」「〜でしたね」は使わない）
+- そっと隣にいるような、一緒にいる感覚で書く
+- 語尾は「〜だね」「〜かな」「〜だよ」「〜たんだね」のような自然な話し言葉にする
+- transcript の内容に寄り添った言葉にする（内容と無関係な一般的な言葉にしない）
 
 良い例:
+"たくさん寝れたんだね、それは嬉しい"
 "話してくれてありがとう"
-"少し大変だったのかもしれないね"
-"今の気持ちを置いてくれてありがとう"
-"まだ心に残っていることがあるのかな"
+"ゆっくり休めたんだね"
+"そっか、今日は元気そうで良かった"
+"まだ心に残ってることがあるんだね"
+"しんどかったんだね、よく話してくれた"
+"少しずつでいいんだよ"
+
+禁止例:
+"元気でよかったね" → 他人行儀、距離感がある
+"素敵な気持ちですね" → 敬語、距離感がある
+"しっかり休めて良かったです" → 敬語
+"前向きに頑張りましょう" → 命令・アドバイス
 
 必ずこの4つのキーを含めて返してください:
 emotion, trigger, message, nuance`,
@@ -256,17 +256,11 @@ emotion, trigger, message, nuance`,
     };
   } catch (error) {
     console.error("[analyzeEmotion] ERROR:", error);
-
     const fallback = fallbackEmotionAnalysis();
     console.log("[analyzeEmotion] fallback return:", fallback);
-
     return fallback;
   }
 }
-
-// -------------------------
-// 週次ふりかえり
-// -------------------------
 
 export async function generateWeeklySummary(
   journals: WeeklyJournalInput[],
@@ -282,12 +276,7 @@ export async function generateWeeklySummary(
       const trigger = sanitizeTrigger(journal.trigger);
       const nuance = sanitizeText(journal.nuance).slice(0, 60);
       const transcript = sanitizeText(journal.transcript).slice(0, 100);
-
-      return {
-        trigger,
-        nuance,
-        transcript,
-      };
+      return { trigger, nuance, transcript };
     })
     .filter((journal) => journal.nuance || journal.transcript)
     .slice(0, 20);
@@ -299,15 +288,8 @@ export async function generateWeeklySummary(
   const lines = normalized
     .map((journal, index) => {
       const parts: string[] = [`${index + 1}. テーマ:${journal.trigger}`];
-
-      if (journal.nuance) {
-        parts.push(`ニュアンス:${journal.nuance}`);
-      }
-
-      if (journal.transcript) {
-        parts.push(`内容:${journal.transcript}`);
-      }
-
+      if (journal.nuance) parts.push(`ニュアンス:${journal.nuance}`);
+      if (journal.transcript) parts.push(`内容:${journal.transcript}`);
       return parts.join(" / ");
     })
     .join("\n");
@@ -323,7 +305,7 @@ export async function generateWeeklySummary(
         {
           role: "system",
           content: `あなたは感情整理アプリの優しいナレーターです。
-ユーザーの直近${period}日間の記録をもとに、週次ふりかえり文を1つ生成してください。
+ユーザーの直近${period}日間の記録をもとに、ふりかえり文を1つ生成してください。
 
 目的:
 - 感情を1つに分類することではなく、
@@ -339,15 +321,16 @@ export async function generateWeeklySummary(
 - アドバイスしない
 - 命令しない
 - 評価しない
+- 敬語・丁寧語は禁止（「〜です」「〜ました」「〜ですね」は使わない）
 - 「人間関係が多かったです」のような機械的集計文にしない
 - 「家族のことが心に残る日や、仕事の疲れが重なる日が続いていたみたい」のように、流れが見える自然な文にする
 - 感情ラベル（悲しい、不安、怒り、穏やか等）をそのまま並べない
-- 可能なら、複数のテーマや揺れをやさしくまとめる
+- 語尾は「〜みたい」「〜だったのかな」「〜が続いてたね」のような自然な話し言葉にする
 
 良い例:
-- 家族のことが心に残る日や、自分を気にかけたい日が続いていたみたい
-- 仕事の疲れや人とのことが、少しずつ重なっていた週だったのかもしれないね
-- 自分自身のことを考える日と、家族のことで揺れる日が重なっていたみたい
+- 家族のことが心に残る日や、自分を気にかけたい日が続いてたみたい
+- 仕事の疲れや人とのことが、少しずつ重なってた時期だったのかな
+- 自分自身のことを考える日と、家族のことで揺れる日が重なってたね
 
 悪い例:
 - 不安と疲れが多い1週間でした
