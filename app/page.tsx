@@ -320,6 +320,14 @@ export default function Home() {
         <div className="vj-content">
           <div className="vj-header">
             <p className="vj-label">Voice Journal</p>
+                <p style={{
+                  fontSize: "11px",
+                  color: "rgba(255,255,255,0.2)",
+                  letterSpacing: "0.12em",
+                  margin: "0 0 18px 0",
+                  }}>
+                {new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
+                </p>
             <h1 className="vj-title">
               {isRecording ? <>話してね<br />聴いてるよ</> : isSilence ? <span style={{ visibility: "hidden" }}>　</span> : <>今の気持ちを<br />話してみて</>}
             </h1>
