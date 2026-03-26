@@ -640,7 +640,6 @@ export default function LogsPage() {
 
                     <div className="capsule-past-header">
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        <p className="capsule-past-label">{timeCapsule.label}のあなた</p>
                         <button
                           className="capsule-past-date"
                           onClick={() => router.push(`/logs/${encodeURIComponent(timeCapsule.journal.emotion)}/${timeCapsule.journal.id}`)}
