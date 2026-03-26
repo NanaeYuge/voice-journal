@@ -626,13 +626,13 @@ export default function LogsPage() {
               {/* タイムカプセル */}
               {timeCapsule && (
                 <div className="capsule-wrap">
-                  <p className="logs-section-label">過去のあなたへ</p>
-                  <div className="capsule-card">
+                    <p className="logs-section-label">過去のあなたへ</p>
+                    <div className="capsule-card">
                     <div className="capsule-header">
-                      <div className="capsule-header-left">
+                        <div className="capsule-header-left">
                         <span className="capsule-moon">🌙</span>
-                        <span className="capsule-invite">今日、会ってみる？</span>
-                      </div>
+                        <span className="capsule-invite">{timeCapsule.label}のあなたに、会ってみる？</span>
+                        </div>
                       <button className="capsule-calendar-btn" onClick={() => setShowCalendar(true)}>
                         📅 別の日を選ぶ
                       </button>
