@@ -59,6 +59,11 @@ function buildSparkBar(dates: string[], periodDays: number): string {
   return counts.map((c) => bars[Math.round((c / max) * (bars.length - 1))]).join("");
 }
 
+function formatCapsuleDate(str: string) {
+  const d = new Date(str);
+  return `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
 function EmotionTag({ emotion }: { emotion: string }) {
   const cfg = emotionConfig[emotion];
   if (!cfg) return null;
@@ -460,7 +465,7 @@ export default function LogsPage() {
               {/* タイムカプセル */}
               {timeCapsule && (
                 <div className="capsule-wrap">
-                  <p className="logs-section-label">過去のあなたへ</p>
+                  <p className="logs-section-label">過去のあなた</p>
                   <div className="capsule-card">
                     <div className="capsule-header">
                       <span className="capsule-moon">🌙</span>
@@ -469,37 +474,46 @@ export default function LogsPage() {
 
                     {/* 過去の記録 */}
                     <div className="capsule-past-header">
-                      <p className="capsule-past-label">{timeCapsule.label}のあなた</p>
-                      <EmotionTag emotion={timeCapsule.journal.emotion} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <p className="capsule-past-label">{timeCapsule.label}のあなた</p>
+                            <button
+                                onClick={() => router.push(`/logs/${encodeURIComponent(timeCapsule.journal.emotion)}/${timeCapsule.journal.id}`)}
+                                style={{ fontSize: "10px", color: "rgba(139,92,246,0.5)", background: "none", border: "none", cursor: "pointer", letterSpacing: "0.08em", fontFamily: "'Noto Sans JP', sans-serif", padding: 0, textAlign: "left", transition: "color 0.2s" }}
+                            >
+                                {formatCapsuleDate(timeCapsule.journal.created_at)} →
+                            </button>
+                        </div>
+                        <EmotionTag emotion={timeCapsule.journal.emotion} />
                     </div>
+
                     <p className="capsule-quote">
-                      「{showFullPast
+                        「{showFullPast
                         ? timeCapsule.journal.transcript
                         : timeCapsule.journal.transcript?.slice(0, 80) + ((timeCapsule.journal.transcript?.length ?? 0) > 80 ? "..." : "")}」
                     </p>
                     {(timeCapsule.journal.transcript?.length ?? 0) > 80 && (
                       <button className="capsule-quote-full-btn" onClick={() => setShowFullPast(!showFullPast)}>
                         {showFullPast ? "▲ 閉じる" : "▼ 全文を見る"}
-                      </button>
+                        </button>
                     )}
 
                     <div className="capsule-arrow">↓</div>
 
                     {/* 今のあなた */}
                     {capsuleReply ? (
-                      <div className="capsule-reply">
+                        <div className="capsule-reply">
                         <div className="capsule-reply-header">
-                          <p className="capsule-reply-label">今のあなた</p>
-                          <EmotionTag emotion={capsuleReply.emotion} />
+                            <p className="capsule-reply-label">今のあなた</p>
+                            <EmotionTag emotion={capsuleReply.emotion} />
                         </div>
                         <p className="capsule-reply-quote">「{capsuleReply.transcript}」</p>
                         {capsuleReply.message && (
-                          <p className="capsule-reply-message">{capsuleReply.message}</p>
+                            <p className="capsule-reply-message">{capsuleReply.message}</p>
                         )}
-                        <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにあるよ</p>
-                      </div>
+                        <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにいるよ</p>
+                        </div>
                     ) : capsuleClosed ? (
-                      <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにあるよ</p>
+                      <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにいるよ</p>
                     ) : (
                       <>
                         <p className="capsule-prompt">今のあなたはどう感じる？</p>
