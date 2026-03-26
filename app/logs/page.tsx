@@ -445,28 +445,6 @@ export default function LogsPage() {
                 );
               })}
 
-              {/* トリガー */}
-              {sortedTriggers.length > 0 && (
-                <div style={{ marginTop: "40px" }}>
-                  <p className="logs-section-label">よく出るトリガー</p>
-                  <div style={{ borderRadius: "14px", border: "1px solid rgba(255,255,255,0.05)", overflow: "hidden" }}>
-                    {sortedTriggers.map(([trigger, count], i) => {
-                      const ratio = count / sortedTriggers[0][1];
-                      return (
-                        <div key={trigger} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "13px 18px", borderBottom: i < sortedTriggers.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", background: "rgba(255,255,255,0.015)" }}>
-                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", width: "16px", textAlign: "right", flexShrink: 0 }}>{i + 1}</span>
-                          <span style={{ flex: 1, fontSize: "13px", color: "rgba(255,255,255,0.65)", letterSpacing: "0.04em" }}>{trigger}</span>
-                          <div style={{ width: "72px", height: "3px", borderRadius: "2px", background: "rgba(255,255,255,0.5)", flexShrink: 0 }}>
-                            <div style={{ width: `${ratio * 100}%`, height: "100%", borderRadius: "2px", background: "rgba(139,92,246,0.6)" }} />
-                          </div>
-                          <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", flexShrink: 0, width: "24px", textAlign: "right" }}>{count}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               {/* ふりかえり */}
               <div style={{ marginTop: "40px" }}>
                 <p className="logs-section-label">この{period}日のふりかえり</p>
