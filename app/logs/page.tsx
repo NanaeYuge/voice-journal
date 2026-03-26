@@ -23,15 +23,16 @@ type TimeCapsule = {
 type CapsuleReply = {
   transcript: string;
   message: string;
+  emotion: string;
 };
 
-const emotionConfig: { [key: string]: { emoji: string; color: string; bg: string; whisper: string } } = {
-  嬉しい: { emoji: "😊", color: "#fbbf24", bg: "rgba(251,191,36,0.05)",  whisper: "いい瞬間があったんだね" },
-  悲しい: { emoji: "😢", color: "#7eb8f7", bg: "rgba(126,184,247,0.05)", whisper: "静かな日もあったね" },
-  怒り:   { emoji: "😠", color: "#f4846a", bg: "rgba(244,132,106,0.05)", whisper: "最近ちょっと忙しかった？" },
-  不安:   { emoji: "😰", color: "#b8a4f8", bg: "rgba(184,164,248,0.05)", whisper: "いろいろ考えてたんだね" },
-  穏やか: { emoji: "😌", color: "#7dd3b0", bg: "rgba(125,211,176,0.05)", whisper: "落ち着けてる日が多い" },
-  疲れ:   { emoji: "😴", color: "#8da0b8", bg: "rgba(141,160,184,0.05)", whisper: "ゆっくりできてる？" },
+const emotionConfig: { [key: string]: { emoji: string; color: string; bg: string } } = {
+  嬉しい: { emoji: "😊", color: "#fbbf24", bg: "rgba(251,191,36,0.05)" },
+  悲しい: { emoji: "😢", color: "#7eb8f7", bg: "rgba(126,184,247,0.05)" },
+  怒り:   { emoji: "😠", color: "#f4846a", bg: "rgba(244,132,106,0.05)" },
+  不安:   { emoji: "😰", color: "#b8a4f8", bg: "rgba(184,164,248,0.05)" },
+  穏やか: { emoji: "😌", color: "#7dd3b0", bg: "rgba(125,211,176,0.05)" },
+  疲れ:   { emoji: "😴", color: "#8da0b8", bg: "rgba(141,160,184,0.05)" },
 };
 
 const PERIODS = [
@@ -58,7 +59,22 @@ function buildSparkBar(dates: string[], periodDays: number): string {
   return counts.map((c) => bars[Math.round((c / max) * (bars.length - 1))]).join("");
 }
 
-// 録音モーダル
+function EmotionTag({ emotion }: { emotion: string }) {
+  const cfg = emotionConfig[emotion];
+  if (!cfg) return null;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: "4px",
+      fontSize: "11px", color: cfg.color,
+      background: cfg.bg, border: `1px solid ${cfg.color}33`,
+      borderRadius: "20px", padding: "3px 10px",
+      letterSpacing: "0.06em",
+    }}>
+      {cfg.emoji} {emotion}
+    </span>
+  );
+}
+
 function RecordingModal({
   capsule,
   onClose,
@@ -118,6 +134,7 @@ function RecordingModal({
       const reply: CapsuleReply = {
         transcript: data.transcript || "",
         message: data.message || "",
+        emotion: data.emotion || "穏やか",
       };
       setResult(reply);
       onSaved(reply);
@@ -219,13 +236,15 @@ export default function LogsPage() {
 
       if (capsule) {
         setTimeCapsule(capsule);
-
-        // 既に返信済みか確認
         const replied = allData.find(
           (j: Journal) => j.source === "timecapsule" && j.linked_journal_id === capsule.journal.id
         );
         if (replied) {
-          setCapsuleReply({ transcript: replied.transcript, message: replied.message || "" });
+          setCapsuleReply({
+            transcript: replied.transcript,
+            message: replied.message || "",
+            emotion: replied.emotion || "穏やか",
+          });
           setCapsuleClosed(true);
         }
       }
@@ -311,7 +330,6 @@ export default function LogsPage() {
         .emotion-room-spark { font-size: 12px; letter-spacing: 0.12em; opacity: 0.8; }
         .emotion-room-bottom { display: flex; align-items: baseline; gap: 10px; }
         .emotion-room-count { font-size: 13px; font-weight: 300; color: rgba(255,255,255,0.55); flex-shrink: 0; }
-        .emotion-room-whisper { font-size: 11px; color: rgba(255,255,255,0.55); letter-spacing: 0.04em; margin: 0; }
         .emotion-room-arrow { font-size: 12px; color: rgba(255,255,255,0.1); flex-shrink: 0; }
         .logs-empty { text-align: center; padding: 80px 0; }
         .logs-empty-icon { font-size: 36px; opacity: 0.3; margin-bottom: 16px; }
@@ -330,16 +348,10 @@ export default function LogsPage() {
         .capsule-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
         .capsule-moon { font-size: 14px; }
         .capsule-invite { font-size: 11px; letter-spacing: 0.2em; color: rgba(167,139,250,0.6); font-family: 'Zen Old Mincho', serif; }
-        .capsule-past-label { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; margin-bottom: 8px; }
-        .capsule-quote {
-          font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.85; letter-spacing: 0.03em;
-          margin: 0 0 4px 0; padding-left: 12px; border-left: 2px solid rgba(139,92,246,0.25); font-style: italic;
-        }
-        .capsule-quote-full-btn {
-          font-size: 10px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer;
-          letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; padding: 0 0 16px 14px;
-          display: block; transition: color 0.2s;
-        }
+        .capsule-past-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .capsule-past-label { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; margin: 0; }
+        .capsule-quote { font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 4px 0; padding-left: 12px; border-left: 2px solid rgba(139,92,246,0.25); font-style: italic; }
+        .capsule-quote-full-btn { font-size: 10px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; padding: 0 0 16px 14px; display: block; transition: color 0.2s; }
         .capsule-quote-full-btn:hover { color: rgba(139,92,246,0.8); }
         .capsule-arrow { text-align: center; font-size: 11px; color: rgba(255,255,255,0.15); letter-spacing: 0.15em; margin-bottom: 16px; }
         .capsule-prompt { font-size: 12px; color: rgba(255,255,255,0.35); letter-spacing: 0.08em; margin: 0 0 20px 0; }
@@ -348,10 +360,9 @@ export default function LogsPage() {
         .capsule-btn-talk:hover { background: rgba(139,92,246,0.18); border-color: rgba(139,92,246,0.5); }
         .capsule-btn-close { width: 100%; padding: 10px; border-radius: 10px; border: none; background: none; color: rgba(255,255,255,0.2); font-size: 12px; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.1em; cursor: pointer; transition: color 0.2s; }
         .capsule-btn-close:hover { color: rgba(255,255,255,0.4); }
-
-        /* 録音済み表示 */
         .capsule-reply { margin-top: 4px; }
-        .capsule-reply-label { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; margin-bottom: 8px; }
+        .capsule-reply-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .capsule-reply-label { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; margin: 0; }
         .capsule-reply-quote { font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 12px 0; padding-left: 12px; border-left: 2px solid rgba(167,139,250,0.3); font-style: italic; }
         .capsule-reply-message { font-size: 13px; color: rgba(167,139,250,0.75); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 16px 0; }
         .capsule-closed-msg { font-size: 12px; color: rgba(255,255,255,0.25); text-align: center; letter-spacing: 0.08em; padding: 8px 0; line-height: 1.8; }
@@ -412,7 +423,7 @@ export default function LogsPage() {
             <>
               <p className="logs-section-label">この{period}日の心</p>
               {sorted.map(([emotion, items], i) => {
-                const cfg = emotionConfig[emotion] || { emoji: "💭", color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.03)", whisper: "" };
+                const cfg = emotionConfig[emotion] || { emoji: "💭", color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.03)" };
                 const spark = buildSparkBar(items.map((j) => j.created_at), period);
                 return (
                   <div key={emotion} className="emotion-room" style={{ background: cfg.bg, animationDelay: `${i * 0.07}s` }} onClick={() => router.push(`/logs/${encodeURIComponent(emotion)}`)}>
@@ -427,7 +438,6 @@ export default function LogsPage() {
                       </div>
                       <div className="emotion-room-bottom">
                         <span className="emotion-room-count">{items.length}件</span>
-                        <p className="emotion-room-whisper">{cfg.whisper}</p>
                       </div>
                     </div>
                     <span className="emotion-room-arrow">›</span>
@@ -480,7 +490,10 @@ export default function LogsPage() {
                     </div>
 
                     {/* 過去の記録 */}
-                    <p className="capsule-past-label">{timeCapsule.label}のあなた</p>
+                    <div className="capsule-past-header">
+                      <p className="capsule-past-label">{timeCapsule.label}のあなた</p>
+                      <EmotionTag emotion={timeCapsule.journal.emotion} />
+                    </div>
                     <p className="capsule-quote">
                       「{showFullPast
                         ? timeCapsule.journal.transcript
@@ -494,10 +507,13 @@ export default function LogsPage() {
 
                     <div className="capsule-arrow">↓</div>
 
-                    {/* 今のあなた（録音済み or ボタン） */}
+                    {/* 今のあなた */}
                     {capsuleReply ? (
                       <div className="capsule-reply">
-                        <p className="capsule-reply-label">今のあなた</p>
+                        <div className="capsule-reply-header">
+                          <p className="capsule-reply-label">今のあなた</p>
+                          <EmotionTag emotion={capsuleReply.emotion} />
+                        </div>
                         <p className="capsule-reply-quote">「{capsuleReply.transcript}」</p>
                         {capsuleReply.message && (
                           <p className="capsule-reply-message">{capsuleReply.message}</p>
