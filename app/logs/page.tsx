@@ -64,6 +64,10 @@ function formatCapsuleDate(str: string) {
   return `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 
+function formatDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+}
+
 function EmotionTag({ emotion }: { emotion: string }) {
   const cfg = emotionConfig[emotion];
   if (!cfg) return null;
@@ -80,6 +84,125 @@ function EmotionTag({ emotion }: { emotion: string }) {
   );
 }
 
+// カレンダーモーダル
+function CalendarModal({
+  allJournals,
+  onSelect,
+  onClose,
+}: {
+  allJournals: Journal[];
+  onSelect: (journal: Journal) => void;
+  onClose: () => void;
+}) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const candidates = allJournals.filter((j) => j.source !== "timecapsule");
+
+  // 日付ごとの記録マップ
+  const dateMap: { [key: string]: Journal[] } = {};
+  candidates.forEach((j) => {
+    const key = formatDateKey(new Date(j.created_at));
+    if (!dateMap[key]) dateMap[key] = [];
+    dateMap[key].push(j);
+  });
+
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const weeks: (number | null)[][] = [];
+  let week: (number | null)[] = Array(firstDay).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    week.push(d);
+    if (week.length === 7) { weeks.push(week); week = []; }
+  }
+  if (week.length > 0) {
+    while (week.length < 7) week.push(null);
+    weeks.push(week);
+  }
+
+  const selectedJournals = selectedDate ? (dateMap[selectedDate] || []) : [];
+
+  return (
+    <div className="cal-overlay" onClick={onClose}>
+      <div className="cal-card" onClick={(e) => e.stopPropagation()}>
+        {selectedDate && selectedJournals.length > 0 ? (
+          // 記録一覧
+          <div className="cal-list">
+            <div className="cal-list-header">
+              <button className="cal-list-back" onClick={() => setSelectedDate(null)}>← 戻る</button>
+              <p className="cal-list-date">{selectedDate.replace(/-/g, "/")}</p>
+            </div>
+            {selectedJournals.map((j) => {
+              const cfg = emotionConfig[j.emotion] || { emoji: "💭", color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.03)" };
+              return (
+                <div key={j.id} className="cal-list-item" onClick={() => onSelect(j)}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <span style={{ fontSize: "16px" }}>{cfg.emoji}</span>
+                    <span style={{ fontSize: "11px", color: cfg.color, letterSpacing: "0.06em" }}>{j.emotion}</span>
+                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", marginLeft: "auto" }}>
+                      {formatCapsuleDate(j.created_at)}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", margin: 0, lineHeight: "1.6", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                    {j.transcript || "（文字起こしなし）"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          // カレンダー
+          <>
+            <div className="cal-header">
+              <button className="cal-nav" onClick={() => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y-1); } else setViewMonth(m => m-1); }}>‹</button>
+              <p className="cal-month">{viewYear}年{viewMonth+1}月</p>
+              <button className="cal-nav" onClick={() => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); } else setViewMonth(m => m+1); }}>›</button>
+            </div>
+            <div className="cal-weekdays">
+              {["日","月","火","水","木","金","土"].map((d) => (
+                <span key={d} className="cal-weekday">{d}</span>
+              ))}
+            </div>
+            <div className="cal-grid">
+              {weeks.map((week, wi) =>
+                week.map((day, di) => {
+                  if (!day) return <div key={`${wi}-${di}`} />;
+                  const key = formatDateKey(new Date(viewYear, viewMonth, day));
+                  const dayJournals = dateMap[key] || [];
+                  const hasRecord = dayJournals.length > 0;
+                  const isToday = key === formatDateKey(today);
+                  const emotions = [...new Set(dayJournals.map(j => j.emotion))];
+                  return (
+                    <div
+                      key={`${wi}-${di}`}
+                      className={`cal-day ${hasRecord ? "has-record" : ""} ${isToday ? "is-today" : ""}`}
+                      onClick={() => hasRecord && setSelectedDate(key)}
+                    >
+                      <span className="cal-day-num">{day}</span>
+                      {hasRecord && (
+                        <div className="cal-dots">
+                          {emotions.slice(0, 3).map((e) => {
+                            const c = emotionConfig[e];
+                            return c ? <span key={e} className="cal-dot" style={{ background: c.color }} /> : null;
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <p className="cal-hint">記録のある日をタップ</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 録音モーダル
 function RecordingModal({
   capsule,
   onClose,
@@ -121,12 +244,10 @@ function RecordingModal({
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
-
       const formData = new FormData();
       formData.append("audio", blob, "recording.webm");
       const res = await fetch("/api/analyze", { method: "POST", body: formData });
       const data = await res.json();
-
       await supabase.from("journals").insert({
         user_id: userData.user.id,
         transcript: data.transcript || "",
@@ -135,7 +256,6 @@ function RecordingModal({
         source: "timecapsule",
         linked_journal_id: capsule.journal.id,
       });
-
       const reply: CapsuleReply = {
         transcript: data.transcript || "",
         message: data.message || "",
@@ -154,15 +274,10 @@ function RecordingModal({
     <div className="modal-overlay" onClick={!result ? onClose : undefined}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-past-label">{capsule.label}のあなた</div>
-        <p className="modal-past-quote">
-          「{capsule.journal.transcript?.slice(0, 60)}...」
-        </p>
+        <p className="modal-past-quote">「{capsule.journal.transcript?.slice(0, 60)}...」</p>
         <div className="modal-divider" />
-
         {isProcessing ? (
-          <p className="modal-prompt" style={{ animation: "logs-fade 2s ease-in-out infinite" }}>
-            よみとり中...
-          </p>
+          <p className="modal-prompt" style={{ animation: "logs-fade 2s ease-in-out infinite" }}>よみとり中...</p>
         ) : result ? (
           <div className="modal-result">
             <p className="modal-result-label">今のあなた</p>
@@ -175,15 +290,8 @@ function RecordingModal({
           <>
             <p className="modal-prompt">今の気持ちを話してみて</p>
             <div className="modal-rec-area">
-              <button
-                className={`modal-rec-btn ${isRecording ? "recording" : ""}`}
-                onClick={isRecording ? stopRecording : startRecording}
-              >
-                {isRecording ? (
-                  <><span className="rec-dot" /><span>止める</span></>
-                ) : (
-                  <><span>🎙</span><span>話す</span></>
-                )}
+              <button className={`modal-rec-btn ${isRecording ? "recording" : ""}`} onClick={isRecording ? stopRecording : startRecording}>
+                {isRecording ? <><span className="rec-dot" /><span>止める</span></> : <><span>🎙</span><span>話す</span></>}
               </button>
             </div>
             <button className="modal-close-btn" onClick={onClose}>そっと閉じる</button>
@@ -204,6 +312,7 @@ export default function LogsPage() {
   const [capsuleReply, setCapsuleReply] = useState<CapsuleReply | null>(null);
   const [capsuleClosed, setCapsuleClosed] = useState(false);
   const [showRecordModal, setShowRecordModal] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [showFullPast, setShowFullPast] = useState(false);
   const router = useRouter();
   const supabase = createClient();
@@ -224,19 +333,21 @@ export default function LogsPage() {
       const oneMonth =  30 * 24 * 60 * 60 * 1000;
       const oneWeek  =   7 * 24 * 60 * 60 * 1000;
       const window5d =   5 * 24 * 60 * 60 * 1000;
-
       const candidates = allData.filter((j: Journal) => j.source !== "timecapsule");
 
       const findNear = (ms: number): Journal | undefined =>
-        candidates.find((j: Journal) => {
-          const diff = now - new Date(j.created_at).getTime();
-          return Math.abs(diff - ms) < window5d;
-        });
+        candidates.find((j: Journal) => Math.abs(now - new Date(j.created_at).getTime() - ms) < window5d);
+
+      // 継続期間による優先表示
+      const oldestDate = candidates.length > 0
+        ? new Date(candidates[candidates.length - 1].created_at).getTime()
+        : now;
+      const totalDays = (now - oldestDate) / (24 * 60 * 60 * 1000);
 
       const capsule: TimeCapsule | null =
-        findNear(oneYear)  ? { journal: findNear(oneYear)!,  label: "1年前" } :
-        findNear(oneMonth) ? { journal: findNear(oneMonth)!, label: "1ヶ月前" } :
-        findNear(oneWeek)  ? { journal: findNear(oneWeek)!,  label: "1週間前" } :
+        totalDays >= 330 && findNear(oneYear)  ? { journal: findNear(oneYear)!,  label: "1年前" } :
+        totalDays >= 25  && findNear(oneMonth) ? { journal: findNear(oneMonth)!, label: "1ヶ月前" } :
+        totalDays >= 5   && findNear(oneWeek)  ? { journal: findNear(oneWeek)!,  label: "1週間前" } :
         null;
 
       if (capsule) {
@@ -245,15 +356,10 @@ export default function LogsPage() {
           (j: Journal) => j.source === "timecapsule" && j.linked_journal_id === capsule.journal.id
         );
         if (replied) {
-          setCapsuleReply({
-            transcript: replied.transcript,
-            message: replied.message || "",
-            emotion: replied.emotion || "穏やか",
-          });
+          setCapsuleReply({ transcript: replied.transcript, message: replied.message || "", emotion: replied.emotion || "穏やか" });
           setCapsuleClosed(true);
         }
       }
-
       setLoading(false);
     };
     fetchJournals();
@@ -287,6 +393,32 @@ export default function LogsPage() {
     }
   };
 
+  const handleCalendarSelect = (journal: Journal) => {
+    const now = Date.now();
+    const diffMs = now - new Date(journal.created_at).getTime();
+    const diffDays = diffMs / (24 * 60 * 60 * 1000);
+    const label =
+      diffDays >= 330 ? "1年前" :
+      diffDays >= 25  ? "1ヶ月前" :
+      diffDays >= 5   ? "1週間前" :
+      `${Math.round(diffDays)}日前`;
+
+    setTimeCapsule({ journal, label });
+    setCapsuleReply(null);
+    setCapsuleClosed(false);
+    setShowFullPast(false);
+    setShowCalendar(false);
+
+    // この記録に対して返信済みか確認
+    const replied = journals.find(
+      (j) => j.source === "timecapsule" && j.linked_journal_id === journal.id
+    );
+    if (replied) {
+      setCapsuleReply({ transcript: replied.transcript, message: replied.message || "", emotion: replied.emotion || "穏やか" });
+      setCapsuleClosed(true);
+    }
+  };
+
   const cutoff = Date.now() - period * 24 * 60 * 60 * 1000;
   const filtered = journals.filter((j) => new Date(j.created_at).getTime() > cutoff);
   const emotionMap: { [key: string]: Journal[] } = {};
@@ -295,11 +427,6 @@ export default function LogsPage() {
     emotionMap[j.emotion].push(j);
   });
   const sorted = Object.entries(emotionMap).sort((a, b) => b[1].length - a[1].length);
-  const triggerMap: { [key: string]: number } = {};
-  filtered.forEach((j) => {
-    if (j.emotion_trigger) triggerMap[j.emotion_trigger] = (triggerMap[j.emotion_trigger] || 0) + 1;
-  });
-  const sortedTriggers = Object.entries(triggerMap).sort((a, b) => b[1] - a[1]);
 
   return (
     <>
@@ -350,11 +477,16 @@ export default function LogsPage() {
         .capsule-wrap { margin-top: 48px; animation: room-in 0.6s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.2s; opacity: 0; }
         .capsule-card { border-radius: 16px; border: 1px solid rgba(139,92,246,0.2); background: rgba(139,92,246,0.04); padding: 24px 22px; position: relative; overflow: hidden; }
         .capsule-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(139,92,246,0.3), transparent); }
-        .capsule-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .capsule-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .capsule-header-left { display: flex; align-items: center; gap: 8px; }
         .capsule-moon { font-size: 14px; }
         .capsule-invite { font-size: 11px; letter-spacing: 0.2em; color: rgba(167,139,250,0.6); font-family: 'Zen Old Mincho', serif; }
+        .capsule-calendar-btn { font-size: 10px; color: rgba(139,92,246,0.45); background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.2); border-radius: 12px; padding: 4px 10px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.06em; transition: all 0.2s; }
+        .capsule-calendar-btn:hover { background: rgba(139,92,246,0.15); color: rgba(139,92,246,0.8); }
         .capsule-past-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .capsule-past-label { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; margin: 0; }
+        .capsule-past-date { font-size: 10px; color: rgba(139,92,246,0.5); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; padding: 0; transition: color 0.2s; }
+        .capsule-past-date:hover { color: rgba(139,92,246,0.8); }
         .capsule-quote { font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 4px 0; padding-left: 12px; border-left: 2px solid rgba(139,92,246,0.25); font-style: italic; }
         .capsule-quote-full-btn { font-size: 10px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; padding: 0 0 16px 14px; display: block; transition: color 0.2s; }
         .capsule-quote-full-btn:hover { color: rgba(139,92,246,0.8); }
@@ -372,11 +504,40 @@ export default function LogsPage() {
         .capsule-reply-message { font-size: 13px; color: rgba(167,139,250,0.75); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 16px 0; }
         .capsule-closed-msg { font-size: 12px; color: rgba(255,255,255,0.25); text-align: center; letter-spacing: 0.08em; padding: 8px 0; line-height: 1.8; }
 
+        /* カレンダーモーダル */
+        .cal-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: flex-end; justify-content: center; animation: overlay-in 0.2s ease; }
+        @keyframes overlay-in { from{opacity:0} to{opacity:1} }
+        .cal-card { width: 100%; max-width: 460px; background: #0f1324; border: 1px solid rgba(139,92,246,0.2); border-bottom: none; border-radius: 20px 20px 0 0; padding: 28px 24px 40px; animation: modal-up 0.35s cubic-bezier(0.16,1,0.3,1); max-height: 80vh; overflow-y: auto; }
+        @keyframes modal-up { from{transform:translateY(100%)} to{transform:translateY(0)} }
+        .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .cal-nav { font-size: 20px; color: rgba(139,92,246,0.5); background: none; border: none; cursor: pointer; padding: 4px 12px; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
+        .cal-nav:hover { color: rgba(139,92,246,0.9); }
+        .cal-month { font-family: 'Zen Old Mincho', serif; font-size: 14px; color: rgba(255,255,255,0.6); letter-spacing: 0.15em; margin: 0; }
+        .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 8px; }
+        .cal-weekday { text-align: center; font-size: 10px; color: rgba(255,255,255,0.2); letter-spacing: 0.06em; padding: 4px 0; }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 16px; }
+        .cal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 40px; border-radius: 8px; padding: 4px 2px; transition: background 0.15s; }
+        .cal-day.has-record { cursor: pointer; }
+        .cal-day.has-record:hover { background: rgba(139,92,246,0.1); }
+        .cal-day.is-today .cal-day-num { color: rgba(167,139,250,0.9); font-weight: 500; }
+        .cal-day-num { font-size: 12px; color: rgba(255,255,255,0.25); line-height: 1; margin-bottom: 3px; }
+        .cal-day.has-record .cal-day-num { color: rgba(255,255,255,0.75); }
+        .cal-dots { display: flex; gap: 2px; }
+        .cal-dot { width: 4px; height: 4px; border-radius: 50%; opacity: 0.8; }
+        .cal-hint { font-size: 10px; color: rgba(255,255,255,0.15); text-align: center; letter-spacing: 0.1em; margin: 0; }
+
+        /* 記録一覧 */
+        .cal-list { }
+        .cal-list-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+        .cal-list-back { font-size: 11px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; transition: color 0.2s; padding: 0; }
+        .cal-list-back:hover { color: rgba(139,92,246,0.9); }
+        .cal-list-date { font-size: 13px; color: rgba(255,255,255,0.4); letter-spacing: 0.08em; margin: 0; }
+        .cal-list-item { padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; }
+        .cal-list-item:hover { border-color: rgba(139,92,246,0.3); }
+
         /* 録音モーダル */
         .modal-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: flex; align-items: flex-end; justify-content: center; animation: overlay-in 0.2s ease; }
-        @keyframes overlay-in { from{opacity:0} to{opacity:1} }
         .modal-card { width: 100%; max-width: 460px; background: #0f1324; border: 1px solid rgba(139,92,246,0.2); border-bottom: none; border-radius: 20px 20px 0 0; padding: 28px 24px 40px; animation: modal-up 0.35s cubic-bezier(0.16,1,0.3,1); }
-        @keyframes modal-up { from{transform:translateY(100%)} to{transform:translateY(0)} }
         .modal-past-label { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 0.15em; margin-bottom: 8px; }
         .modal-past-quote { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.75; letter-spacing: 0.03em; margin: 0 0 16px 0; padding-left: 10px; border-left: 2px solid rgba(139,92,246,0.2); font-style: italic; }
         .modal-divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 16px 0; }
@@ -465,68 +626,80 @@ export default function LogsPage() {
               {/* タイムカプセル */}
               {timeCapsule && (
                 <div className="capsule-wrap">
-                  <p className="logs-section-label">過去のあなた</p>
+                  <p className="logs-section-label">過去のあなたへ</p>
                   <div className="capsule-card">
                     <div className="capsule-header">
-                      <span className="capsule-moon">🌙</span>
-                      <span className="capsule-invite">今日、会ってみる？</span>
+                      <div className="capsule-header-left">
+                        <span className="capsule-moon">🌙</span>
+                        <span className="capsule-invite">今日、会ってみる？</span>
+                      </div>
+                      <button className="capsule-calendar-btn" onClick={() => setShowCalendar(true)}>
+                        📅 別の日を選ぶ
+                      </button>
                     </div>
 
-                    {/* 過去の記録 */}
                     <div className="capsule-past-header">
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <p className="capsule-past-label">{timeCapsule.label}のあなた</p>
-                            <button
-                                onClick={() => router.push(`/logs/${encodeURIComponent(timeCapsule.journal.emotion)}/${timeCapsule.journal.id}`)}
-                                style={{ fontSize: "10px", color: "rgba(139,92,246,0.5)", background: "none", border: "none", cursor: "pointer", letterSpacing: "0.08em", fontFamily: "'Noto Sans JP', sans-serif", padding: 0, textAlign: "left", transition: "color 0.2s" }}
-                            >
-                                {formatCapsuleDate(timeCapsule.journal.created_at)} →
-                            </button>
-                        </div>
-                        <EmotionTag emotion={timeCapsule.journal.emotion} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <p className="capsule-past-label">{timeCapsule.label}のあなた</p>
+                        <button
+                          className="capsule-past-date"
+                          onClick={() => router.push(`/logs/${encodeURIComponent(timeCapsule.journal.emotion)}/${timeCapsule.journal.id}`)}
+                        >
+                          {formatCapsuleDate(timeCapsule.journal.created_at)} →
+                        </button>
+                      </div>
+                      <EmotionTag emotion={timeCapsule.journal.emotion} />
                     </div>
 
                     <p className="capsule-quote">
-                        「{showFullPast
+                      「{showFullPast
                         ? timeCapsule.journal.transcript
                         : timeCapsule.journal.transcript?.slice(0, 80) + ((timeCapsule.journal.transcript?.length ?? 0) > 80 ? "..." : "")}」
                     </p>
                     {(timeCapsule.journal.transcript?.length ?? 0) > 80 && (
                       <button className="capsule-quote-full-btn" onClick={() => setShowFullPast(!showFullPast)}>
                         {showFullPast ? "▲ 閉じる" : "▼ 全文を見る"}
-                        </button>
+                      </button>
                     )}
 
                     <div className="capsule-arrow">↓</div>
 
-                    {/* 今のあなた */}
                     {capsuleReply ? (
-                        <div className="capsule-reply">
+                      <div className="capsule-reply">
                         <div className="capsule-reply-header">
-                            <p className="capsule-reply-label">今のあなた</p>
-                            <EmotionTag emotion={capsuleReply.emotion} />
+                          <p className="capsule-reply-label">今のあなた</p>
+                          <EmotionTag emotion={capsuleReply.emotion} />
                         </div>
                         <p className="capsule-reply-quote">「{capsuleReply.transcript}」</p>
-                        {capsuleReply.message && (
-                            <p className="capsule-reply-message">{capsuleReply.message}</p>
-                        )}
-                        <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにいるよ</p>
-                        </div>
+                        {capsuleReply.message && <p className="capsule-reply-message">{capsuleReply.message}</p>}
+                        <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにあるよ</p>
+                      </div>
                     ) : capsuleClosed ? (
-                      <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにいるよ</p>
+                      <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにあるよ</p>
                     ) : (
                       <>
                         <p className="capsule-prompt">今のあなたはどう感じる？</p>
                         <div className="capsule-btns">
-                          <button className="capsule-btn-talk" onClick={() => setShowRecordModal(true)}>
-                            今の気持ちを話す
-                          </button>
-                          <button className="capsule-btn-close" onClick={() => setCapsuleClosed(true)}>
-                            そっと閉じる
-                          </button>
+                          <button className="capsule-btn-talk" onClick={() => setShowRecordModal(true)}>今の気持ちを話す</button>
+                          <button className="capsule-btn-close" onClick={() => setCapsuleClosed(true)}>そっと閉じる</button>
                         </div>
                       </>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* タイムカプセルがない時もカレンダーから選べる */}
+              {!timeCapsule && (
+                <div className="capsule-wrap">
+                  <p className="logs-section-label">過去のあなたへ</p>
+                  <div className="capsule-card" style={{ textAlign: "center" }}>
+                    <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)", margin: "0 0 16px 0", lineHeight: "1.8" }}>
+                      記録が増えると<br />過去のあなたに会えるよ
+                    </p>
+                    <button className="capsule-calendar-btn" onClick={() => setShowCalendar(true)}>
+                      📅 過去の記録を見る
+                    </button>
                   </div>
                 </div>
               )}
@@ -536,6 +709,14 @@ export default function LogsPage() {
           )}
         </div>
       </div>
+
+      {showCalendar && (
+        <CalendarModal
+          allJournals={journals}
+          onSelect={handleCalendarSelect}
+          onClose={() => setShowCalendar(false)}
+        />
+      )}
 
       {showRecordModal && timeCapsule && (
         <RecordingModal
