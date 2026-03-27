@@ -675,10 +675,10 @@ const capsule: TimeCapsule | null =
                         </div>
                         <p className="capsule-reply-quote">「{capsuleReply.transcript}」</p>
                         {capsuleReply.message && <p className="capsule-reply-message">{capsuleReply.message}</p>}
-                        <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにあるよ</p>
+                        <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにきてね</p>
                       </div>
                     ) : capsuleClosed ? (
-                      <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにあるよ</p>
+                      <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにきてね</p>
                     ) : (
                       <>
                         <p className="capsule-prompt">今のあなたはどう感じる？</p>
