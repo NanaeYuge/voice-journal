@@ -319,7 +319,7 @@ export default function Home() {
 
         <div className="vj-content">
           <div className="vj-header">
-            <p className="vj-label">Voice Journal</p>
+            <p className="vj-label">YORU</p>
                 <p style={{
                   fontSize: "11px",
                   color: "rgba(255,255,255,0.2)",

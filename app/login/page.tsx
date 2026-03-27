@@ -12,14 +12,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   // 同意チェック
-  const [consentStorage, setConsentStorage] = useState(false);
-  const [consentAI, setConsentAI] = useState(false);
-  const [consentImprovement, setConsentImprovement] = useState(false);
+  const [consentAll, setConsentAll] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
 
-  const allConsented = consentStorage && consentAI && consentImprovement;
+  const allConsented = consentAll;
 
   const handleSubmit = async () => {
     if (isSignUp && !allConsented) {
@@ -38,13 +36,13 @@ export default function LoginPage() {
   // 新規登録成功
         if (data.user) {
             await supabase.from("user_consents").insert({
-                user_id: data.user.id,
-                terms_version: "1.0",
-                privacy_version: "1.0",
-                ai_analysis_consent: consentAI,
-                data_storage_consent: consentStorage,
-                product_improvement_consent:    consentImprovement,
-            });
+  user_id: data.user.id,
+  terms_version: "1.0",
+  privacy_version: "1.0",
+  ai_analysis_consent: true,
+  data_storage_consent: true,
+  product_improvement_consent: true,
+});
         }
         setMessage("確認メールを送りました。メールをチェックしてね。");
 }
@@ -245,7 +243,7 @@ export default function LoginPage() {
         <div className="login-card">
           <div className="login-top">
             <span className="login-moon">🌙</span>
-            <span className="login-brand">VOICE JOURNAL</span>
+            <span className="login-brand">YORU</span>
             <h1 className="login-greeting">{isSignUp ? "はじめよう" : "おかえり"}</h1>
           </div>
 
@@ -268,45 +266,20 @@ export default function LoginPage() {
           {/* 新規登録時のみ同意フロー表示 */}
           {isSignUp && (
             <div className="consent-wrap">
-              <label className="consent-item">
-                <input
-                  type="checkbox"
-                  className="consent-checkbox"
-                  checked={consentStorage}
-                  onChange={(e) => setConsentStorage(e.target.checked)}
-                />
-                <span className="consent-label">
-                  音声・文字起こしデータをサーバーに保存することに同意します。（
-                  <button className="consent-link" onClick={() => window.open("/privacy", "_blank")}>プライバシーポリシー</button>
-                  ）
-                </span>
-              </label>
-
-              <label className="consent-item">
-                <input
-                  type="checkbox"
-                  className="consent-checkbox"
-                  checked={consentAI}
-                  onChange={(e) => setConsentAI(e.target.checked)}
-                />
-                <span className="consent-label">
-                  感情・トリガーのAI解析のためOpenAI APIにテキストを送信することに同意します。
-                </span>
-              </label>
-
-              <label className="consent-item">
-                <input
-                  type="checkbox"
-                  className="consent-checkbox"
-                  checked={consentImprovement}
-                  onChange={(e) => setConsentImprovement(e.target.checked)}
-                />
-                <span className="consent-label">
-                  サービス改善のためデータを利用することに同意します。（
-                  <button className="consent-link" onClick={() => window.open("/terms", "_blank")}>利用規約</button>
-                  ）
-                </span>
-              </label>
+                <label className="consent-item">
+                    <input
+                        type="checkbox"
+                        className="consent-checkbox"
+                        checked={consentAll}
+                        onChange={(e) => setConsentAll(e.target.checked)}
+                    />
+                        <span className="consent-label">
+                            <button className="consent-link" onClick={() => window.open("/terms", "_blank")}>利用規約</button>
+                        および
+                        <button className="consent-link" onClick={() => window.open("/privacy", "_blank")}>プライバシーポリシー</button>
+                        に同意します。
+                        </span>
+                </label>
             </div>
           )}
 
