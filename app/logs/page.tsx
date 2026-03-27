@@ -328,27 +328,32 @@ export default function LogsPage() {
       const allData = data || [];
       setJournals(allData);
 
-      const now = Date.now();
-      const oneYear  = 365 * 24 * 60 * 60 * 1000;
-      const oneMonth =  30 * 24 * 60 * 60 * 1000;
-      const oneWeek  =   7 * 24 * 60 * 60 * 1000;
-      const window5d =   5 * 24 * 60 * 60 * 1000;
-      const candidates = allData.filter((j: Journal) => j.source !== "timecapsule");
+        const now = Date.now();
+        const oneYear  = 365 * 24 * 60 * 60 * 1000;
+        const oneMonth =  30 * 24 * 60 * 60 * 1000;
+        const oneWeek  =   7 * 24 * 60 * 60 * 1000;
+        const window2d =   2 * 24 * 60 * 60 * 1000;
+        const candidates = allData.filter((j: Journal) => j.source !== "timecapsule");
 
-      const findNear = (ms: number): Journal | undefined =>
-        candidates.find((j: Journal) => Math.abs(now - new Date(j.created_at).getTime() - ms) < window5d);
+        const findNear = (ms: number): Journal | undefined =>
+            candidates.find((j: Journal) => Math.abs(now - new Date(j.created_at).getTime() - ms) < window2d);
 
-      // 継続期間による優先表示
-      const oldestDate = candidates.length > 0
-        ? new Date(candidates[candidates.length - 1].created_at).getTime()
-        : now;
-      const totalDays = (now - oldestDate) / (24 * 60 * 60 * 1000);
+        const makeCapsule = (j: Journal): TimeCapsule => {
+  const diffDays = Math.round((now - new Date(j.created_at).getTime()) / (24 * 60 * 60 * 1000));
+  const label = diffDays >= 330 ? "1年前" : diffDays >= 25 ? "1ヶ月前" : `${diffDays}日前`;
+  return { journal: j, label };
+};
 
-      const capsule: TimeCapsule | null =
-        totalDays >= 330 && findNear(oneYear)  ? { journal: findNear(oneYear)!,  label: "1年前" } :
-        totalDays >= 25  && findNear(oneMonth) ? { journal: findNear(oneMonth)!, label: "1ヶ月前" } :
-        totalDays >= 5   && findNear(oneWeek)  ? { journal: findNear(oneWeek)!,  label: "1週間前" } :
-        null;
+const oldestDate = candidates.length > 0
+  ? new Date(candidates[candidates.length - 1].created_at).getTime()
+  : now;
+const totalDays = (now - oldestDate) / (24 * 60 * 60 * 1000);
+
+const capsule: TimeCapsule | null =
+  totalDays >= 330 && findNear(oneYear)  ? makeCapsule(findNear(oneYear)!) :
+  totalDays >= 25  && findNear(oneMonth) ? makeCapsule(findNear(oneMonth)!) :
+  totalDays >= 5   && findNear(oneWeek)  ? makeCapsule(findNear(oneWeek)!) :
+  null;
 
       if (capsule) {
         setTimeCapsule(capsule);
@@ -398,10 +403,9 @@ export default function LogsPage() {
     const diffMs = now - new Date(journal.created_at).getTime();
     const diffDays = diffMs / (24 * 60 * 60 * 1000);
     const label =
-      diffDays >= 330 ? "1年前" :
-      diffDays >= 25  ? "1ヶ月前" :
-      diffDays >= 5   ? "1週間前" :
-      `${Math.round(diffDays)}日前`;
+        diffDays >= 330 ? "1年前" :
+        diffDays >= 25  ? "1ヶ月前" :
+        `${Math.round(diffDays)}日前`;
 
     setTimeCapsule({ journal, label });
     setCapsuleReply(null);
