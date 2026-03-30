@@ -42,6 +42,7 @@ type WeeklyJournalInput = {
   trigger?: string;
   transcript?: string;
   nuance?: string;
+  created_at?: string;
 };
 
 const emotionMap: Record<Emotion, string> = {
@@ -287,7 +288,8 @@ export async function generateWeeklySummary(
       const trigger = sanitizeTrigger(journal.trigger);
       const nuance = sanitizeText(journal.nuance).slice(0, 60);
       const transcript = sanitizeText(journal.transcript).slice(0, 200);
-      return { trigger, nuance, transcript };
+      const created_at = sanitizeText(journal.created_at);  // 追加
+    return { trigger, nuance, transcript, created_at };
     })
     .filter((journal) => journal.nuance || journal.transcript)
     .slice(0, 20);
@@ -296,12 +298,15 @@ export async function generateWeeklySummary(
 
   const lines = `対象期間：直近${period}日間\n\n` + normalized
   .map((journal, index) => {
-    const parts: string[] = [`${index + 1}. テーマ:${journal.trigger}`];
+    const date = journal.created_at
+      ? new Date(journal.created_at).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })
+      : "";
+    const parts: string[] = [`${index + 1}. ${date} テーマ:${journal.trigger}`];
     if (journal.nuance) parts.push(`ニュアンス:${journal.nuance}`);
     if (journal.transcript) parts.push(`内容:${journal.transcript}`);
     return parts.join(" / ");
   })
-  .join("\n");
+      .join("\n");
 
   try {
     const completion = await openai.chat.completions.create({
@@ -319,7 +324,7 @@ export async function generateWeeklySummary(
 - 「自分ってそうだったのか」と静かに気づける一文にする
 - 表面的な感情の羅列ではなく、「なぜその状態が続いていたか」まで一歩踏み込む
 - ユーザーの心の「流れ」と「波」を時系列で捉える
-- 前半と後半でコントラストがある場合は必ずそこに言及する
+- 時期によってコントラストがある場合は必ずそこに言及する
 - 波の大きさも反映する（激しく揺れていたのか、穏やかな変化だったのか）
 
 出力条件:
@@ -361,11 +366,11 @@ export async function generateWeeklySummary(
 - 冒頭から具体的な時期で始める
 
 良い例:
-- 前半は仕事のプレッシャーで消耗してたけど、後半はそれが一段落して少し息ができてた気がする。
+- 3月上旬は仕事のプレッシャーで消耗してたけど、3月下旬はそれが一段落して少し息ができてた気がする。
   その間も自分の時間を作ろうとしてたのは、あなたの真面目さが出てたんだと思う。
-- 人間関係のことが頭から離れなかった時期だったのかな。
+- 3月中旬ごろは人間関係のことが頭から離れなかったのかな。
   それでも言葉にしようとし続けてたのは、あなたの誠実さを感じる。
-- 前半は体調の波に振り回されてたけど、後半は少し自分のペースを取り戻せてた気がする。
+- 2月下旬は体調の波に振り回されてたけど、3月に入ってから少し自分のペースを取り戻せてた気がする。
   しんどい日ほど話せてたのは、あなたの素直さがそうさせてたんだと思う。
 
 悪い例:
