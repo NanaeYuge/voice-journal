@@ -372,10 +372,12 @@ const capsule: TimeCapsule | null =
 
   useEffect(() => {
     if (journals.length === 0) return;
-    const targetJournals = journals.filter(
-      (j) => new Date(j.created_at).getTime() > Date.now() - period * 24 * 60 * 60 * 1000
-    );
-    generateSummary(targetJournals);
+    const targetJournals = journals
+        .filter(
+          (j) => new Date(j.created_at).getTime() > Date.now() - period * 24 * 60 * 60 * 1000
+        )
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        generateSummary(targetJournals);
   }, [period, journals]);
 
   const generateSummary = async (targetJournals: Journal[]) => {
