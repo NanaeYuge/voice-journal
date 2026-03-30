@@ -286,7 +286,7 @@ export async function generateWeeklySummary(
     .map((journal) => {
       const trigger = sanitizeTrigger(journal.trigger);
       const nuance = sanitizeText(journal.nuance).slice(0, 60);
-      const transcript = sanitizeText(journal.transcript).slice(0, 100);
+      const transcript = sanitizeText(journal.transcript).slice(0, 200);
       return { trigger, nuance, transcript };
     })
     .filter((journal) => journal.nuance || journal.transcript)
@@ -350,6 +350,8 @@ export async function generateWeeklySummary(
 - 「疲れていた」だけでなく「何による疲れだったか」まで書く
 - 同じテーマが複数日続いていた場合はそれを一つの流れとして描写する
 - その期間のユーザーの行動・姿勢・努力にも言及する
+- 「モヤモヤ」「後悔」「不安」などの抽象的な言葉だけで表現しない
+- 必ず何についてのモヤモヤか、何への後悔かを具体的に書く
 
 良い例:
 - 前半は仕事のプレッシャーで消耗してたけど、後半はそれが一段落して少し息ができてた気がする。
