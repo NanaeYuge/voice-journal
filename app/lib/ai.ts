@@ -294,14 +294,14 @@ export async function generateWeeklySummary(
 
   if (!normalized.length) return null;
 
-  const lines = normalized
-    .map((journal, index) => {
-      const parts: string[] = [`${index + 1}. テーマ:${journal.trigger}`];
-      if (journal.nuance) parts.push(`ニュアンス:${journal.nuance}`);
-      if (journal.transcript) parts.push(`内容:${journal.transcript}`);
-      return parts.join(" / ");
-    })
-    .join("\n");
+  const lines = `対象期間：直近${period}日間\n\n` + normalized
+  .map((journal, index) => {
+    const parts: string[] = [`${index + 1}. テーマ:${journal.trigger}`];
+    if (journal.nuance) parts.push(`ニュアンス:${journal.nuance}`);
+    if (journal.transcript) parts.push(`内容:${journal.transcript}`);
+    return parts.join(" / ");
+  })
+  .join("\n");
 
   try {
     const completion = await openai.chat.completions.create({
@@ -356,6 +356,9 @@ export async function generateWeeklySummary(
 - 具体的な時期を「〇月上旬」「〇月下旬」「〇月中旬」などで表現する
 - 7日間の場合は「今週前半」「週の後半」など日単位で表現してよい
 - 30日・90日の場合は必ず月と時期で表現する
+- 「最近の記録」「最近の振り返り」という表現は禁止
+- 期間を示す時は「この〇日間」ではなく「〇月〇旬ごろは」など具体的な月と時期で表現する
+- 冒頭から具体的な時期で始める
 
 良い例:
 - 前半は仕事のプレッシャーで消耗してたけど、後半はそれが一段落して少し息ができてた気がする。
