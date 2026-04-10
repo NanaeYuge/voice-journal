@@ -312,7 +312,7 @@ export async function generateWeeklySummary(
     const completion = await openai.chat.completions.create({
   model: "gpt-4o-mini",
   temperature: 0.6,
-  max_tokens: 180,
+  max_tokens: 300,
   messages: [
     {
       role: "system",

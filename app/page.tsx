@@ -253,6 +253,19 @@ export default function Home() {
         .vj-dot:nth-child(3) { animation-delay: 0.5s; }
         @keyframes vj-dot-float { 0%,100%{transform:translateY(0);opacity:0.4} 50%{transform:translateY(-5px);opacity:1} }
 
+        .vj-memo-link {
+        margin-top: 24px;
+        font-size: 11px;
+        color: rgba(255,255,255,0.15);
+        background: none;
+        border: none;
+        cursor: pointer;
+        letter-spacing: 0.1em;
+        transition: color 0.2s;
+        font-family: 'Noto Sans JP', sans-serif;
+        }
+        .vj-memo-link:hover { color: rgba(139,92,246,0.6); }
+
         /* 結果カード */
         .vj-result { margin-top: 52px; width: 100%; animation: vj-emerge 0.8s cubic-bezier(0.16,1,0.3,1) forwards; }
         @keyframes vj-emerge { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
@@ -368,6 +381,15 @@ export default function Home() {
               )}
             </button>
           </div>
+
+          {!isRecording && !isSilence && !isAnalyzing && !result && (
+            <button
+              className="vj-memo-link"
+              onClick={() => router.push("/memo")}
+            >
+              今は話せない？ → メモだけ残す
+            </button>
+          )}
 
           {result && emotionCfg && (
             <div className="vj-result">
