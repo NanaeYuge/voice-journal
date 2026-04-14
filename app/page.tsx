@@ -22,10 +22,7 @@ export default function Home() {
   const [savedId, setSavedId] = useState<number | null>(null);
   const [result, setResult] = useState<{
     emotion: string;
-    nuance: string;
     summary: string;
-    insight: string;
-    message: string;
   } | null>(null);
 
   const [isEditingSummary, setIsEditingSummary] = useState(false);
@@ -129,22 +126,10 @@ export default function Home() {
       if (insertError) throw new Error(`DB保存失敗: ${insertError.message}`);
       if (inserted) setSavedId(inserted.id);
 
-      setResult({
-        emotion: safeEmotion,
-        nuance: safeNuance,
-        summary: safeSummary,
-        insight: safeInsight,
-        message: "",
-      });
+      setResult({ emotion: safeEmotion, summary: safeSummary });
       setEditSummary(safeSummary);
     } catch {
-      setResult({
-        emotion: "穏やか",
-        nuance: "",
-        summary: "",
-        insight: "",
-        message: "",
-      });
+      setResult({ emotion: "穏やか", summary: "" });
     } finally {
       setIsAnalyzing(false);
     }
@@ -165,19 +150,12 @@ export default function Home() {
         summary: editSummary,
         emotion: data.emotion || result.emotion,
         message: "",
-        nuance: data.nuance || result.nuance,
-        insight: data.insight || result.insight,
+        nuance: data.nuance || "",
+        insight: data.insight || "",
         emotion_trigger: data.trigger || "その他",
       }).eq("id", savedId);
 
-      setResult({
-        ...result,
-        summary: editSummary,
-        emotion: data.emotion || result.emotion,
-        nuance: data.nuance || result.nuance,
-        insight: data.insight || result.insight,
-        message: "",
-      });
+      setResult({ emotion: data.emotion || result.emotion, summary: editSummary });
       setIsEditingSummary(false);
       setSummarySaved(true);
       setTimeout(() => setSummarySaved(false), 2000);
@@ -247,8 +225,6 @@ export default function Home() {
         .vj-result { margin-top: 52px; width: 100%; animation: vj-emerge 0.8s cubic-bezier(0.16,1,0.3,1) forwards; }
         @keyframes vj-emerge { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
 
-        .vj-result-nuance { font-family: 'Zen Old Mincho', serif; font-size: 18px; font-weight: 500; color: rgba(255,255,255,0.88); margin: 0 0 16px 0; letter-spacing: 0.04em; line-height: 1.5; }
-
         .vj-divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 16px 0; }
 
         .vj-summary-section { margin-bottom: 16px; }
@@ -266,8 +242,6 @@ export default function Home() {
         .vj-summary-cancel { font-size: 11px; color: rgba(255,255,255,0.2); background: none; border: none; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; transition: color 0.2s; padding: 6px 8px; }
         .vj-summary-cancel:hover { color: rgba(255,255,255,0.4); }
         .vj-summary-saved { font-size: 10px; color: rgba(139,92,246,0.6); letter-spacing: 0.08em; animation: vj-emerge 0.3s ease; }
-
-        .vj-result-insight { font-size: 13px; color: rgba(167,139,250,0.7); line-height: 1.85; letter-spacing: 0.03em; margin: 0; font-style: italic; }
 
         .vj-logs-link { display: inline-block; margin-top: 20px; font-size: 12px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-logs-link:hover { color: rgba(139,92,246,0.9); }
@@ -344,12 +318,6 @@ export default function Home() {
 
           {result && (
             <div className="vj-result">
-              {result.nuance && (
-                <p className="vj-result-nuance">{result.nuance}</p>
-              )}
-
-              <hr className="vj-divider" />
-
               {(result.summary || isEditingSummary) && (
                 <div className="vj-summary-section">
                   <div className="vj-summary-header">
@@ -381,14 +349,6 @@ export default function Home() {
                   )}
                 </div>
               )}
-
-              {result.insight && (
-                <>
-                  <hr className="vj-divider" />
-                  <p className="vj-result-insight">{result.insight}</p>
-                </>
-              )}
-
               <button className="vj-logs-link" onClick={() => router.push("/logs")}>
                 過去のきろくを見る →
               </button>
