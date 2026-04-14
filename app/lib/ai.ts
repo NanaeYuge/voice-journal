@@ -1,4 +1,4 @@
-console.log("[ai.ts] loaded version 2026-03-26-1400");
+console.log("[ai.ts] loaded version 2026-04-13-1300");
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -32,7 +32,6 @@ export type EmotionAnalysis = {
   emotion: Emotion;
   trigger: Trigger;
   message: string;
-  emoji: string;
   nuance: string;
   summary: string;
 };
@@ -43,15 +42,6 @@ type WeeklyJournalInput = {
   transcript?: string;
   nuance?: string;
   created_at?: string;
-};
-
-const emotionMap: Record<Emotion, string> = {
-  嬉しい: "😊",
-  悲しい: "😢",
-  怒り: "😠",
-  不安: "😟",
-  穏やか: "😌",
-  疲れ: "😴",
 };
 
 function sanitizeText(value: unknown): string {
@@ -70,25 +60,14 @@ function sanitizeTrigger(value: unknown): Trigger {
     : "その他";
 }
 
-function sanitizeMessage(value: unknown): string {
-  const fallback = "話してくれてありがとう";
-  const text = sanitizeText(value);
-  if (!text) return fallback;
-  return text.slice(0, 32);
-}
-
 function sanitizeNuance(value: unknown): string {
-  const fallback = "少し言葉にしながら整理している感じ";
   const text = sanitizeText(value);
-  if (!text) return fallback;
-  return text.slice(0, 40);
+  return text.slice(0, 60);
 }
 
 function sanitizeSummary(value: unknown): string {
-  const fallback = "";
   const text = sanitizeText(value);
-  if (!text) return fallback;
-  return text.slice(0, 100);
+  return text.slice(0, 200);
 }
 
 function safeJsonParse(raw: string): Record<string, unknown> {
@@ -105,13 +84,11 @@ function safeJsonParse(raw: string): Record<string, unknown> {
 }
 
 function fallbackEmotionAnalysis(): EmotionAnalysis {
-  const emotion: Emotion = "穏やか";
   return {
-    emotion,
+    emotion: "穏やか",
     trigger: "その他",
-    message: "話してくれてありがとう",
-    emoji: emotionMap[emotion],
-    nuance: "少し言葉にしながら整理している感じ",
+    message: "",
+    nuance: "",
     summary: "",
   };
 }
@@ -139,18 +116,9 @@ export async function analyzeEmotion(
   console.log("[analyzeEmotion] start");
 
   const safeTranscript = transcript.trim();
-  console.log("[analyzeEmotion] transcript:", safeTranscript);
 
   if (!safeTranscript) {
-    console.log("[analyzeEmotion] empty transcript -> fallback");
-    return {
-      emotion: "穏やか",
-      trigger: "その他",
-      message: "話してくれてありがとう",
-      emoji: emotionMap["穏やか"],
-      nuance: "まだうまく言葉にならない感じ",
-      summary: "",
-    };
+    return fallbackEmotionAnalysis();
   }
 
   try {
@@ -160,94 +128,65 @@ export async function analyzeEmotion(
       messages: [
         {
           role: "system",
-          content: `あなたは感情整理アプリの分析APIです。
+          content: `あなたは感情・思考の整理を支援するAPIです。
 出力は必ずJSONオブジェクトのみ。前置き・説明・マークダウン・コードブロックは禁止。
 
 返却形式:
-{"emotion":"...","nuance":"...","message":"...","trigger":"...","summary":"..."}
+{"emotion":"...","trigger":"...","nuance":"...","summary":"..."}
 
-emotion は次のいずれか1つ（内部集計用・基本的にユーザーには見せない）:
+# emotion（内部集計用・UIには表示しない）
+次のいずれか1つ:
 "嬉しい","悲しい","怒り","不安","穏やか","疲れ"
+- 厳密に断定しなくていい
+- 判断しにくい場合は"穏やか"
 
-emotion のルール:
-- これはユーザー表示用ではなく、内部集計用です
-- 感情を厳密に断定する必要はありません
-- 複雑で判断しにくい場合は "穏やか" に逃がして構いません
-- ただし transcript 全体の雰囲気に明らかな特徴がある場合は近いものを選んでください
+# trigger（内部集計用）
+次のいずれか1つ:
+"人間関係","仕事","体調","睡眠","家族","お金","自分自身","その他"
+- transcript全体の中心テーマを1つ選ぶ
 
-nuance（ユーザーに見せる気持ちの言葉）:
-- 20〜40文字
-- 感情を断定・分類しない
-- 話した内容のニュアンスをやわらかく映し返す
-- 「〜な気持ち」「〜な感じ」「〜かな」など、やさしい表現にする
-- 複数の感情が混ざっている場合は、その混ざり方をそのまま表現する
-- ラベルっぽくしない
+# nuance（ユーザーに見せる・タイトル的な役割）
+- 10〜25文字
+- その記録の「核心」を一言で言い切る
+- 言い切り表現（「〜な感じ」「〜かな」は禁止）
+- 感情ラベルを使わない
+- 名詞または短文で表現する
 
 良い例:
-"少し疲れながらも、気持ちを整理したい感じ"
-"家族のことがずっと心に引っかかっている感じ"
-"ほっとした部分もあるけど、まだ複雑な気持ちかな"
-"自分のことを責めながらも、整理したい気持ち"
+"思い通りにいかない苛立ち"
+"伝わらないもどかしさ"
+"夫婦関係の出口が見えない感覚"
+"仕事の重さが積み重なった日"
 
 悪い例:
-"穏やかな気持ち"
-"不安を感じています"
-"怒りがあります"
+"イライラしている感じ" → 言い切りじゃない
+"不安な気持ち" → 感情ラベル
+"少し疲れている" → 弱すぎる
 
-summary（話した内容の要約）:
-- 1〜2文、50文字以内
-- 話した内容を客観的に短くまとめる
-- 「〜について話した」「〜と感じていた」のような形で
-- 感情の解釈ではなく、何を話したかの事実ベースで
-- ユーザーが「あ、これで合ってる」と確認できる内容に
+# summary（ユーザーに見せる・メイン）
+以下の3点を含む2〜4文で構成する:
 
-良い例:
-"今日たくさん寝れて元気だと話した"
-"夫との関係について悩んでいると話した"
-"仕事がうまくいかない日が続いていると話した"
+① 出来事（何があったか・具体的に）
+② 感情（どう感じたか・文章で表現）
+③ 気づき（ユーザーが気づいていない可能性のあるパターン・矛盾・繰り返しを1つ）
 
-trigger は次のいずれか1つ:
-"人間関係","仕事","体調","睡眠","家族","お金","自分自身","その他"
-
-trigger のルール:
-- 文全体を見て、最も中心的なテーマを1つだけ選ぶ
-- 複数候補がある場合は、その記録の中心にあったものを優先する
-
-message の条件:
-- 12〜32文字
-- 決めつけない
-- アドバイスしない
-- 命令しない
-- 励ましすぎない
-- 評価しない
-- 敬語・丁寧語は禁止（「〜ですね」「〜ました」「〜です」は使わない）
-- 他人行儀な表現は禁止（「〜でよかったね」「〜ですね」「〜でしたね」は使わない）
-- そっと隣にいるような、一緒にいる感覚で書く
-- 語尾は「〜だね」「〜かな」「〜だよ」「〜たんだね」のような自然な話し言葉にする
-- transcript の内容に寄り添った言葉にする（内容と無関係な一般的な言葉にしない）
-- ユーザーが言った言葉をそのまま繰り返さない
-- 話した内容の「裏にある気持ち」や「言葉にならなかった部分」を返す
-- 「あ、そこまで見てくれたんだ」と感じさせる一言にする
+ルール:
+- 共感・励まし・アドバイス・解決提案は禁止
+- 「大変でしたね」「頑張りましたね」は禁止
+- 感情ラベル（「不安」「疲れ」など）を単独で使わない
+- 文章内で感情を表現する
+- 気づきは「〜かもしれない」「〜という傾向がある」のトーンで
+- 100〜180文字以内
 
 良い例:
-"まだ心に残ってることがあるんだね"
-"しんどかったんだね、よく話してくれた"
-"少しずつでいいんだよ"
-"結果より、自分が本気だったことが問われる気がするのかな"
-"怖いって思えるのは、それだけ向き合ってきたからだよ"
-"うまくいってほしいって気持ちが強いんだね"
+"夫との言い合いがきっかけで、自分の気持ちをうまく伝えられなかったと話していた。言葉が出てこないというより、伝わらないことへの疲れが積み重なっているのかもしれない。"
 
+悪い例:
+"夫婦関係について話した。大変でしたね。" → 共感・薄い
+"不安な状態が続いている。" → 感情ラベル
 
-禁止例:
-"元気でよかったね" → 他人行儀、距離感がある
-"素敵な気持ちですね" → 敬語、距離感がある
-"しっかり休めて良かったです" → 敬語
-"前向きに頑張りましょう" → 命令・アドバイス
-- ユーザーが言ったフレーズをそのまま使わない
-例：「結果を見るのが不安なんだね」→NG（言ったことの繰り返し）
-
-必ずこの5つのキーを含めて返してください:
-emotion, trigger, message, nuance, summary`,
+必ずこの4つのキーを含めて返してください:
+emotion, trigger, nuance, summary`,
         },
         {
           role: "user",
@@ -258,17 +197,15 @@ emotion, trigger, message, nuance, summary`,
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
     console.log("[analyzeEmotion] raw response:", raw);
-
     const parsed = safeJsonParse(raw);
     console.log("[analyzeEmotion] parsed:", parsed);
 
     const emotion = sanitizeEmotion(parsed.emotion);
     const trigger = sanitizeTrigger(parsed.trigger);
-    const message = sanitizeMessage(parsed.message);
     const nuance = sanitizeNuance(parsed.nuance);
     const summary = sanitizeSummary(parsed.summary);
 
-    return { emotion, trigger, message, emoji: emotionMap[emotion], nuance, summary };
+    return { emotion, trigger, message: "", nuance, summary };
   } catch (error) {
     console.error("[analyzeEmotion] ERROR:", error);
     return fallbackEmotionAnalysis();
@@ -288,8 +225,8 @@ export async function generateWeeklySummary(
       const trigger = sanitizeTrigger(journal.trigger);
       const nuance = sanitizeText(journal.nuance).slice(0, 60);
       const transcript = sanitizeText(journal.transcript).slice(0, 200);
-      const created_at = sanitizeText(journal.created_at);  // 追加
-    return { trigger, nuance, transcript, created_at };
+      const created_at = sanitizeText(journal.created_at);
+      return { trigger, nuance, transcript, created_at };
     })
     .filter((journal) => journal.nuance || journal.transcript)
     .slice(0, 20);
@@ -297,93 +234,69 @@ export async function generateWeeklySummary(
   if (!normalized.length) return null;
 
   const lines = `対象期間：直近${period}日間\n\n` + normalized
-  .map((journal, index) => {
-    const date = journal.created_at
-      ? new Date(journal.created_at).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })
-      : "";
-    const parts: string[] = [`${index + 1}. ${date} テーマ:${journal.trigger}`];
-    if (journal.nuance) parts.push(`ニュアンス:${journal.nuance}`);
-    if (journal.transcript) parts.push(`内容:${journal.transcript}`);
-    return parts.join(" / ");
-  })
-      .join("\n");
+    .map((journal, index) => {
+      const date = journal.created_at
+        ? new Date(journal.created_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })
+        : "";
+      const parts: string[] = [`${index + 1}. ${date} テーマ:${journal.trigger}`];
+      if (journal.nuance) parts.push(`核心:${journal.nuance}`);
+      if (journal.transcript) parts.push(`内容:${journal.transcript}`);
+      return parts.join(" / ");
+    })
+    .join("\n");
 
   try {
     const completion = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
-  temperature: 0.6,
-  max_tokens: 300,
-  messages: [
-    {
-      role: "system",
-      content: `あなたは、ユーザーの感情記録を深く読み解くナレーターです。
-ユーザーの直近${period}日間の記録をもとに、ふりかえり文を1つ生成してください。
+      model: "gpt-4o-mini",
+      temperature: 0.5,
+      max_tokens: 350,
+      messages: [
+        {
+          role: "system",
+          content: `あなたはユーザーの記録を分析し、パターンと気づきを抽出するナレーターです。
 
-目的:
-- ユーザー自身が気づいていない感情のパターン・繰り返している思考・矛盾を見つける
-- 「自分ってそうだったのか」と静かに気づける一文にする
-- 表面的な感情の羅列ではなく、「なぜその状態が続いていたか」まで一歩踏み込む
-- ユーザーの心の「流れ」と「波」を時系列で捉える
-- 時期によってコントラストがある場合は必ずそこに言及する
-- 波の大きさも反映する（激しく揺れていたのか、穏やかな変化だったのか）
+# 必須要素（必ず3点すべて含める）
 
-出力条件:
-- 2〜3文で構成する
-- 1文あたり20〜35文字を目安にする
-- 読点でつなげた長い1文にしない
-- 文と文の間で視点や時間軸を変える
-- テキストのみ（改行で文を区切る）
-- 感情ラベルをそのまま並べない
-- 一般論・アドバイス・命令・評価は禁止
-- 敬語・丁寧語は禁止
-- ユーザーの具体的な傾向に言及すること（抽象的な総括にしない）
-- 本質を突くニュアンス（傷つけないが、ドキッとするレベル）
-- 語尾は「〜だったのかな」「〜だったのかもね」「〜してたのかもしれない」など
-- 話した内容の事実だけでなく、「なぜそう感じていたか」まで一歩踏み込む
-- ユーザーが「あ、そういうことだったのか」と気づける要約にする
-- 「すごい」「いいね」「頑張った」は使わない
-- その人の行動・性格・姿勢から読み取れるものを言葉にする（素直さ・柔軟さ・優しさ・丁寧さ・誠実さ・芯の強さ・繊細さなど）
-- 気づきや推測は「〜かもしれない」のトーンで
-- ユーザーへの肯定・承認・強さへの言及は断言してよい
-- 力強い相棒のような立ち位置で書く
-    ただ振り返るのではなく、もう一人の自分の仲間として語りかける
-- 最新の記録だけに引っ張られない
-- 期間全体を俯瞰して、前半・中盤・後半の流れを読む
-- 直近の出来事を代表的なこととして扱わない
-- 時間の経過とともに何が変化したかに着目する
-- 感情の原因となったテーマ（仕事・人間関係・育児・体調など）を必ず具体的に言及する
-- 「疲れていた」だけでなく「何による疲れだったか」まで書く
-- 同じテーマが複数日続いていた場合はそれを一つの流れとして描写する
-- その期間のユーザーの行動・姿勢・努力にも言及する
-- 「モヤモヤ」「後悔」「不安」などの抽象的な言葉だけで表現しない
-- 必ず何についてのモヤモヤか、何への後悔かを具体的に書く
-- 「前半」「後半」という表現を使わない
-- 具体的な時期を「〇月上旬」「〇月下旬」「〇月中旬」などで表現する
-- 7日間の場合は「今週前半」「週の後半」など日単位で表現してよい
-- 30日・90日の場合は必ず月と時期で表現する
-- 「最近の記録」「最近の振り返り」という表現は禁止
-- 期間を示す時は「この〇日間」ではなく「〇月〇旬ごろは」など具体的な月と時期で表現する
-- 冒頭から具体的な時期で始める
+① 感情・テーマの傾向
+- この期間に何が多かったか
+- 具体的なテーマ名を使う（人間関係・体調・仕事など）
 
-良い例:
-- 3月上旬は仕事のプレッシャーで消耗してたけど、3月下旬はそれが一段落して少し息ができてた気がする。
-  その間も自分の時間を作ろうとしてたのは、あなたの真面目さが出てたんだと思う。
-- 3月中旬ごろは人間関係のことが頭から離れなかったのかな。
-  それでも言葉にしようとし続けてたのは、あなたの誠実さを感じる。
-- 2月下旬は体調の波に振り回されてたけど、3月に入ってから少し自分のペースを取り戻せてた気がする。
-  しんどい日ほど話せてたのは、あなたの素直さがそうさせてたんだと思う。
+② 繰り返しパターン
+- 同じ状況・感情・反応が繰り返されているか
+- 状況は違っても反応が同じ場合も含める
 
-悪い例:
-- 心穏やかに過ごせた日々の中で、少しのイライラや感謝が交じっていたみたい
-- 不安と疲れが多い1ヶ月でした
-- 前向きに過ごせていたようです`,
-    },
-    {
-      role: "user",
-      content: lines,
-    },
-  ],
-});
+③ 一言の気づき（最重要）
+- ユーザーが「ハッとする」内容
+- 短く・明確に・断言する
+- 「〜という傾向がある」「〜かもしれない」のトーン
+
+# 禁止事項
+- 共感・励まし・アドバイス・解決提案
+- 感情ラベルの羅列（「不安が多い」だけではNG）
+- 薄いまとめ（「様々な感情があった」など）
+- 敬語・丁寧語
+- 「前半」「後半」という表現
+- 冒頭に「最近の記録」「振り返ると」などの定型句
+
+# 出力形式
+- 3〜4文
+- 1文あたり25〜40文字
+- 冒頭から具体的な時期（○月上旬など）または具体的なテーマで始める
+- 7日の場合は「今週○曜日ごろ」など
+- 30日・90日は「○月○旬ごろ」で表現
+
+# 良い例
+"4月上旬は夫婦間のすれ違いが中心で、言葉が出てこない場面が繰り返されていた。体調が悪い日に感情が溢れやすいパターンがある。自分の限界を超えてから声に出す傾向があるのかもしれない。"
+
+# 悪い例
+"不安や疲れが多い1ヶ月でした。頑張っていますね。"`,
+        },
+        {
+          role: "user",
+          content: lines,
+        },
+      ],
+    });
 
     const summary = completion.choices[0]?.message?.content?.trim() ?? "";
     return summary || null;

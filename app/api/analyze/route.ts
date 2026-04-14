@@ -33,10 +33,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       transcript,
       emotion: result.emotion,
-      emoji: result.emoji,
-      message: result.message,
       trigger: result.trigger,
-      nuance: result.nuance || "少し言葉にしながら整理している感じ",
+      nuance: result.nuance,
+      summary: result.summary,
+      message: "",
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Unknown server error";
@@ -45,10 +45,10 @@ export async function POST(request: NextRequest) {
         error: message,
         transcript: "",
         emotion: "穏やか",
-        emoji: "😌",
-        message: "話してくれてありがとう",
         trigger: "その他",
-        nuance: "少し言葉にしながら整理している感じ",
+        nuance: "",
+        summary: "",
+        message: "",
       },
       { status: 500 }
     );

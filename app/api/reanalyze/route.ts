@@ -12,9 +12,10 @@ export async function POST(request: NextRequest) {
     const result = await analyzeEmotion(transcript);
     return NextResponse.json({
       emotion: result.emotion,
-      message: result.message,
       nuance: result.nuance,
+      summary: result.summary,
       trigger: result.trigger,
+      message: "",
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Unknown error";

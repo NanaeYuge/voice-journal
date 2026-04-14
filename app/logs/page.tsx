@@ -244,11 +244,11 @@ function RecordingModal({ capsule, onClose, onSaved }: { capsule: TimeCapsule; o
         user_id: userData.user.id,
         transcript: data.transcript || "",
         emotion: data.emotion || "穏やか",
-        message: data.message || "",
+        message: "",
         source: "timecapsule",
         linked_journal_id: capsule.journal.id,
       });
-      const reply: CapsuleReply = { transcript: data.transcript || "", message: data.message || "", emotion: data.emotion || "穏やか" };
+      const reply: CapsuleReply = { transcript: data.transcript || "", message: "", emotion: data.emotion || "穏やか" };
       setResult(reply);
       onSaved(reply);
     } catch (e) {
@@ -270,7 +270,6 @@ function RecordingModal({ capsule, onClose, onSaved }: { capsule: TimeCapsule; o
           <div className="modal-result">
             <p className="modal-result-label">今のあなた</p>
             <p className="modal-result-transcript">「{result.transcript}」</p>
-            <p className="modal-result-message">{result.message}</p>
             <p className="modal-saved-line">🌙 その言葉、過去のあなたにちゃんと届いてるよ</p>
             <button className="modal-close-btn" onClick={onClose}>閉じる</button>
           </div>
@@ -305,6 +304,8 @@ export default function LogsPage() {
   const [showFullPast, setShowFullPast] = useState(false);
   const [calendarInitialDate, setCalendarInitialDate] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"record" | "insight" | "review">("record");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Journal[] | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -406,6 +407,31 @@ export default function LogsPage() {
   const cutoff = Date.now() - period * 24 * 60 * 60 * 1000;
   const periodDates = sortedDates.filter((key) => new Date(key).getTime() > cutoff);
 
+  // debounce検索
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const q = searchQuery.trim().toLowerCase();
+      const results = mainJournals
+        .filter((j) => {
+          const t = (j.transcript || "").toLowerCase();
+          const s = (j.summary || "").toLowerCase();
+          const n = (j.nuance || "").toLowerCase();
+          return t.includes(q) || s.includes(q) || n.includes(q);
+        })
+        .sort((a, b) => {
+          const aT = (a.transcript || "").toLowerCase().includes(q) ? 0 : 1;
+          const bT = (b.transcript || "").toLowerCase().includes(q) ? 0 : 1;
+          return aT - bT;
+        });
+      setSearchResults(results);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery, mainJournals]);
+
   return (
     <>
       <style>{`
@@ -446,6 +472,19 @@ export default function LogsPage() {
         .today-empty { font-size: 13px; color: rgba(255,255,255,0.18); letter-spacing: 0.06em; padding: 12px 0 20px; }
         .timeline-wrap { margin-top: 44px; }
 
+        /* 検索 */
+        .search-wrap { position: relative; margin-bottom: 16px; }
+        .search-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.2); border-radius: 12px; padding: 12px 40px 12px 16px; font-size: 13px; color: rgba(255,255,255,0.7); outline: none; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.04em; box-sizing: border-box; transition: border-color 0.2s; }
+        .search-input:focus { border-color: rgba(139,92,246,0.45); }
+        .search-input::placeholder { color: rgba(255,255,255,0.18); }
+        .search-clear { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,0.2); font-size: 12px; cursor: pointer; transition: color 0.2s; padding: 0; }
+        .search-clear:hover { color: rgba(255,255,255,0.5); }
+        .search-result-item { padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; animation: card-in 0.3s cubic-bezier(0.16,1,0.3,1) both; }
+        .search-result-item:hover { border-color: rgba(139,92,246,0.3); }
+        .search-result-date { font-size: 10px; color: rgba(255,255,255,0.2); letter-spacing: 0.06em; margin: 0 0 6px 0; }
+        .search-result-nuance { font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.82); letter-spacing: 0.04em; margin: 0 0 6px 0; font-family: 'Zen Old Mincho', serif; line-height: 1.5; }
+        .search-result-summary { font-size: 12px; color: rgba(255,255,255,0.4); line-height: 1.65; letter-spacing: 0.03em; margin: 0; }
+
         .summary-section { margin-top: 44px; }
         .summary-card { border-radius: 14px; border: 1px solid rgba(139,92,246,0.15); background: rgba(139,92,246,0.03); padding: 22px 24px; min-height: 72px; display: flex; align-items: flex-start; }
         .summary-text { font-size: 14px; color: rgba(255,255,255,0.58); line-height: 2; letter-spacing: 0.04em; margin: 0; animation: card-in 0.8s cubic-bezier(0.16,1,0.3,1) forwards; }
@@ -467,16 +506,11 @@ export default function LogsPage() {
         .capsule-wrap { margin-top: 52px; animation: card-in 0.6s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.15s; opacity: 0; }
         .capsule-card { border-radius: 16px; border: 1px solid rgba(139,92,246,0.2); background: rgba(139,92,246,0.04); padding: 24px 22px; position: relative; overflow: hidden; }
         .capsule-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(139,92,246,0.35), transparent); }
-        .capsule-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+        .capsule-header { display: flex; align-items: center; margin-bottom: 18px; }
         .capsule-header-left { display: flex; align-items: center; gap: 8px; }
         .capsule-moon { font-size: 14px; }
         .capsule-invite { font-size: 11px; letter-spacing: 0.2em; color: rgba(167,139,250,0.6); font-family: 'Zen Old Mincho', serif; }
-        .capsule-calendar-btn { font-size: 10px; color: rgba(139,92,246,0.45); background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.2); border-radius: 12px; padding: 4px 10px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.06em; transition: all 0.2s; }
-        .capsule-calendar-btn:hover { background: rgba(139,92,246,0.15); }
-        .capsule-past-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-        .capsule-past-label { font-size: 11px; color: rgba(255,255,255,0.28); letter-spacing: 0.1em; margin: 0; }
-        .capsule-past-date { font-size: 10px; color: rgba(139,92,246,0.5); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; padding: 0; transition: color 0.2s; }
-        .capsule-past-date:hover { color: rgba(139,92,246,0.8); }
+        .capsule-past-label { font-size: 11px; color: rgba(255,255,255,0.28); letter-spacing: 0.1em; margin: 0 0 10px 0; }
         .capsule-quote { font-size: 14px; color: rgba(255,255,255,0.62); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 4px 0; padding-left: 12px; border-left: 2px solid rgba(139,92,246,0.25); font-style: italic; }
         .capsule-quote-full-btn { font-size: 10px; color: rgba(139,92,246,0.4); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; padding: 0 0 16px 14px; display: block; transition: color 0.2s; }
         .capsule-quote-full-btn:hover { color: rgba(139,92,246,0.8); }
@@ -489,7 +523,6 @@ export default function LogsPage() {
         .capsule-btn-close:hover { color: rgba(255,255,255,0.38); }
         .capsule-reply-label { font-size: 11px; color: rgba(255,255,255,0.28); letter-spacing: 0.1em; margin: 0 0 8px 0; }
         .capsule-reply-quote { font-size: 14px; color: rgba(255,255,255,0.62); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 12px 0; padding-left: 12px; border-left: 2px solid rgba(167,139,250,0.3); font-style: italic; }
-        .capsule-reply-message { font-size: 13px; color: rgba(167,139,250,0.7); line-height: 1.85; letter-spacing: 0.03em; margin: 0 0 16px 0; }
         .capsule-closed-msg { font-size: 12px; color: rgba(255,255,255,0.22); text-align: center; letter-spacing: 0.08em; padding: 8px 0; line-height: 1.8; }
 
         .logs-empty { text-align: center; padding: 80px 0; }
@@ -503,10 +536,8 @@ export default function LogsPage() {
         .talk-btn { font-size: 13px; color: rgba(167,139,250,0.8); background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.22); border-radius: 24px; padding: 14px 36px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.12em; transition: all 0.2s; }
         .talk-btn:hover { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.38); }
 
-        .past-action-btn { flex: 1; padding: 12px; border-radius: 12px; border: 1px solid rgba(139,92,246,0.2); background: rgba(139,92,246,0.05); color: rgba(167,139,250,0.7); font-size: 12px; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s; }
+        .past-action-btn { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(139,92,246,0.2); background: rgba(139,92,246,0.05); color: rgba(167,139,250,0.7); font-size: 12px; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s; }
         .past-action-btn:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.35); }
-        .past-action-btn--disabled { color: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.05); background: none; cursor: not-allowed; }
-        .past-action-btn--disabled:hover { background: none; border-color: rgba(255,255,255,0.05); }
 
         .cal-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; animation: overlay-in 0.2s ease; }
         @keyframes overlay-in { from{opacity:0} to{opacity:1} }
@@ -550,7 +581,6 @@ export default function LogsPage() {
         .modal-result { padding: 8px 0; animation: card-in 0.5s ease forwards; }
         .modal-result-label { font-size: 11px; color: rgba(255,255,255,0.28); letter-spacing: 0.1em; margin-bottom: 8px; }
         .modal-result-transcript { font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.75; margin: 0 0 12px 0; font-style: italic; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 10px; }
-        .modal-result-message { font-size: 14px; color: rgba(167,139,250,0.82); line-height: 1.85; margin: 0 0 20px 0; }
         .modal-saved-line { font-size: 12px; color: rgba(255,255,255,0.28); letter-spacing: 0.06em; margin: 0 0 20px 0; text-align: center; }
 
         .detail-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; animation: overlay-in 0.2s ease; }
@@ -611,13 +641,50 @@ export default function LogsPage() {
                           </div>
                         ))
                       )}
+
                       <div className="timeline-wrap">
                         <p className="logs-section-label">過去の記録</p>
-                        <div style={{ display: "flex", gap: "10px" }}>
-                          <button className="past-action-btn" onClick={() => setShowCalendar(true)}>カレンダーで見る</button>
-                          <button className="past-action-btn past-action-btn--disabled" disabled>検索（準備中）</button>
+                        <div className="search-wrap">
+                          <input
+                            className="search-input"
+                            type="text"
+                            placeholder="キーワードで探す..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                          />
+                          {searchQuery && (
+                            <button className="search-clear" onClick={() => setSearchQuery("")}>✕</button>
+                          )}
                         </div>
+
+                        {searchQuery.trim() ? (
+                          searchResults === null ? (
+                            <p className="today-empty">検索中...</p>
+                          ) : searchResults.length === 0 ? (
+                            <p className="today-empty">「{searchQuery}」に一致する記録はないよ</p>
+                          ) : (
+                            <>
+                              <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em", margin: "0 0 12px 0" }}>
+                                {searchResults.length}件見つかったよ
+                              </p>
+                              {searchResults.map((j) => (
+                                <div key={j.id} className="search-result-item" onClick={() => setSelectedJournal(j)}>
+                                  <p className="search-result-date">
+                                    {formatDateLabel(formatDateKey(new Date(j.created_at)))} {new Date(j.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                                  </p>
+                                  {j.nuance && <p className="search-result-nuance">{j.nuance}</p>}
+                                  {j.summary && <p className="search-result-summary">{j.summary.slice(0, 60)}{j.summary.length > 60 ? "..." : ""}</p>}
+                                </div>
+                              ))}
+                            </>
+                          )
+                        ) : (
+                          <button className="past-action-btn" onClick={() => setShowCalendar(true)}>
+                            📅 カレンダーで見る
+                          </button>
+                        )}
                       </div>
+
                       <div className="talk-btn-wrap">
                         <button className="talk-btn" onClick={() => router.push("/")}>今の気持ちを話す</button>
                       </div>
@@ -673,14 +740,8 @@ export default function LogsPage() {
                             <span className="capsule-moon">🌙</span>
                             <span className="capsule-invite">{timeCapsule.label}のあなたに、会ってみる？</span>
                           </div>
-                          <button className="capsule-calendar-btn" onClick={() => setShowCalendar(true)}>📅 別の日を選ぶ</button>
                         </div>
-                        <div className="capsule-past-header">
-                          <p className="capsule-past-label">{timeCapsule.label}</p>
-                          <button className="capsule-past-date" onClick={() => setShowCalendar(true)}>
-                            {formatCapsuleDate(timeCapsule.journal.created_at)} →
-                          </button>
-                        </div>
+                        <p className="capsule-past-label">{timeCapsule.label} — {formatCapsuleDate(timeCapsule.journal.created_at)}</p>
                         <p className="capsule-quote">
                           「{showFullPast ? timeCapsule.journal.transcript : timeCapsule.journal.transcript?.slice(0, 80) + ((timeCapsule.journal.transcript?.length ?? 0) > 80 ? "..." : "")}」
                         </p>
@@ -694,7 +755,6 @@ export default function LogsPage() {
                           <div>
                             <p className="capsule-reply-label">今のあなた</p>
                             <p className="capsule-reply-quote">「{capsuleReply.transcript}」</p>
-                            {capsuleReply.message && <p className="capsule-reply-message">{capsuleReply.message}</p>}
                             <p className="capsule-closed-msg">また話したくなったら、<br />いつでもここにきてね</p>
                           </div>
                         ) : capsuleClosed ? (
@@ -714,10 +774,9 @@ export default function LogsPage() {
                     <div className="capsule-wrap">
                       <p className="logs-section-label">過去のあなたへ</p>
                       <div className="capsule-card" style={{ textAlign: "center" }}>
-                        <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.28)", margin: "0 0 16px 0", lineHeight: "1.8" }}>
+                        <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.28)", margin: "0", lineHeight: "1.8" }}>
                           記録が増えると<br />過去のあなたに会えるよ
                         </p>
-                        <button className="capsule-calendar-btn" onClick={() => setShowCalendar(true)}>📅 過去の記録を見る</button>
                       </div>
                     </div>
                   )}

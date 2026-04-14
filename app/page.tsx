@@ -7,21 +7,11 @@ import { useRouter } from "next/navigation";
 type AnalyzeResponse = {
   transcript?: string;
   emotion?: string;
-  emoji?: string;
   message?: string;
   trigger?: string;
   nuance?: string;
   summary?: string;
   error?: string;
-};
-
-const emotionConfig: { [key: string]: { color: string; bg: string } } = {
-  嬉しい: { color: "#fbbf24", bg: "rgba(251,191,36,0.08)" },
-  悲しい: { color: "#7eb8f7", bg: "rgba(126,184,247,0.08)" },
-  怒り:   { color: "#f4846a", bg: "rgba(244,132,106,0.08)" },
-  不安:   { color: "#b8a4f8", bg: "rgba(184,164,248,0.08)" },
-  穏やか: { color: "#7dd3b0", bg: "rgba(125,211,176,0.08)" },
-  疲れ:   { color: "#8da0b8", bg: "rgba(141,160,184,0.08)" },
 };
 
 export default function Home() {
@@ -31,13 +21,11 @@ export default function Home() {
   const [savedId, setSavedId] = useState<number | null>(null);
   const [result, setResult] = useState<{
     emotion: string;
-    emoji: string;
-    message: string;
     nuance: string;
     summary: string;
+    message: string;
   } | null>(null);
 
-  // 要約編集用
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [editSummary, setEditSummary] = useState("");
   const [isSavingSummary, setIsSavingSummary] = useState(false);
@@ -113,13 +101,12 @@ export default function Home() {
       const data: AnalyzeResponse = await res.json();
       if (!res.ok) throw new Error(data.error || "感情解析APIでエラーが発生しました");
 
-      const safeEmotion   = data.emotion   || "穏やか";
-      const safeEmoji     = data.emoji     || "😌";
-      const safeMessage   = data.message   || "話してくれてありがとう";
-      const safeNuance    = data.nuance    || "少し言葉にしながら整理している感じ";
+      const safeEmotion    = data.emotion    || "穏やか";
+      const safeNuance     = data.nuance     || "";
+      const safeMessage    = data.message    || "";
       const safeTranscript = data.transcript || "";
-      const safeTrigger   = data.trigger   || "その他";
-      const safeSummary   = data.summary   || "";
+      const safeTrigger    = data.trigger    || "その他";
+      const safeSummary    = data.summary    || "";
 
       const { data: inserted, error: insertError } = await supabase
         .from("journals")
@@ -141,19 +128,17 @@ export default function Home() {
 
       setResult({
         emotion: safeEmotion,
-        emoji: safeEmoji,
-        message: safeMessage,
         nuance: safeNuance,
         summary: safeSummary,
+        message: safeMessage,
       });
       setEditSummary(safeSummary);
     } catch {
       setResult({
         emotion: "穏やか",
-        emoji: "😌",
-        message: "話してくれてありがとう",
-        nuance: "少し言葉にしながら整理している感じ",
+        nuance: "",
         summary: "",
+        message: "",
       });
     } finally {
       setIsAnalyzing(false);
@@ -164,7 +149,6 @@ export default function Home() {
     if (!savedId || !result) return;
     setIsSavingSummary(true);
     try {
-      // テキスト修正→AI再分析
       const res = await fetch("/api/reanalyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,7 +159,7 @@ export default function Home() {
       await supabase.from("journals").update({
         summary: editSummary,
         emotion: data.emotion || result.emotion,
-        message: data.message || result.message,
+        message: data.message || "",
         nuance: data.nuance || result.nuance,
         emotion_trigger: data.trigger || "その他",
       }).eq("id", savedId);
@@ -184,9 +168,8 @@ export default function Home() {
         ...result,
         summary: editSummary,
         emotion: data.emotion || result.emotion,
-        emoji: result.emoji,
-        message: data.message || result.message,
         nuance: data.nuance || result.nuance,
+        message: "",
       });
       setIsEditingSummary(false);
       setSummarySaved(true);
@@ -197,8 +180,6 @@ export default function Home() {
       setIsSavingSummary(false);
     }
   };
-
-  const emotionCfg = result ? (emotionConfig[result.emotion] || { color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.03)" }) : null;
 
   return (
     <>
@@ -253,34 +234,22 @@ export default function Home() {
         .vj-dot:nth-child(3) { animation-delay: 0.5s; }
         @keyframes vj-dot-float { 0%,100%{transform:translateY(0);opacity:0.4} 50%{transform:translateY(-5px);opacity:1} }
 
-        .vj-memo-link {
-        margin-top: 24px;
-        font-size: 11px;
-        color: rgba(255,255,255,0.15);
-        background: none;
-        border: none;
-        cursor: pointer;
-        letter-spacing: 0.1em;
-        transition: color 0.2s;
-        font-family: 'Noto Sans JP', sans-serif;
-        }
+        .vj-memo-link { margin-top: 24px; font-size: 11px; color: rgba(255,255,255,0.15); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-memo-link:hover { color: rgba(139,92,246,0.6); }
 
         /* 結果カード */
         .vj-result { margin-top: 52px; width: 100%; animation: vj-emerge 0.8s cubic-bezier(0.16,1,0.3,1) forwards; }
         @keyframes vj-emerge { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
 
-        .vj-result-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-        .vj-result-emoji { font-size: 32px; line-height: 1; }
-        .vj-result-emotion-tag {
-          display: inline-flex; align-items: center; gap: 4px;
-          font-size: 12px; border-radius: 20px; padding: 4px 12px;
-          letter-spacing: 0.06em; font-weight: 400;
-        }
+        /* nuance（タイトル） */
         .vj-result-nuance {
           font-family: 'Zen Old Mincho', serif;
-          font-size: 15px; color: rgba(255,255,255,0.75);
-          margin: 0; letter-spacing: 0.04em; line-height: 1.6;
+          font-size: 18px;
+          font-weight: 500;
+          color: rgba(255,255,255,0.88);
+          margin: 0 0 16px 0;
+          letter-spacing: 0.04em;
+          line-height: 1.5;
         }
 
         .vj-divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 16px 0; }
@@ -291,7 +260,7 @@ export default function Home() {
         .vj-summary-label { font-size: 10px; color: rgba(255,255,255,0.25); letter-spacing: 0.2em; font-family: 'Zen Old Mincho', serif; }
         .vj-summary-edit-btn { font-size: 10px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; transition: color 0.2s; padding: 0; }
         .vj-summary-edit-btn:hover { color: rgba(139,92,246,0.9); }
-        .vj-summary-text { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.75; letter-spacing: 0.03em; margin: 0; }
+        .vj-summary-text { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.8; letter-spacing: 0.03em; margin: 0; }
         .vj-summary-textarea {
           width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.25);
           border-radius: 10px; padding: 10px 12px; font-size: 13px; color: rgba(255,255,255,0.8);
@@ -306,9 +275,6 @@ export default function Home() {
         .vj-summary-cancel { font-size: 11px; color: rgba(255,255,255,0.2); background: none; border: none; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; transition: color 0.2s; padding: 6px 8px; }
         .vj-summary-cancel:hover { color: rgba(255,255,255,0.4); }
         .vj-summary-saved { font-size: 10px; color: rgba(139,92,246,0.6); letter-spacing: 0.08em; animation: vj-emerge 0.3s ease; }
-
-        /* AIメッセージ */
-        .vj-result-msg { font-size: 13px; color: rgba(167,139,250,0.7); line-height: 1.85; margin: 0; letter-spacing: 0.03em; }
 
         .vj-logs-link { display: inline-block; margin-top: 20px; font-size: 12px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-logs-link:hover { color: rgba(139,92,246,0.9); }
@@ -333,14 +299,9 @@ export default function Home() {
         <div className="vj-content">
           <div className="vj-header">
             <p className="vj-label">YORU</p>
-                <p style={{
-                  fontSize: "11px",
-                  color: "rgba(255,255,255,0.2)",
-                  letterSpacing: "0.12em",
-                  margin: "0 0 18px 0",
-                  }}>
-                {new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
-                </p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.12em", margin: "0 0 18px 0" }}>
+              {new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
+            </p>
             <h1 className="vj-title">
               {isRecording ? <>話してね<br />聴いてるよ</> : isSilence ? <span style={{ visibility: "hidden" }}>　</span> : <>今の気持ちを<br />話してみて</>}
             </h1>
@@ -383,29 +344,17 @@ export default function Home() {
           </div>
 
           {!isRecording && !isSilence && !isAnalyzing && !result && (
-            <button
-              className="vj-memo-link"
-              onClick={() => router.push("/memo")}
-            >
+            <button className="vj-memo-link" onClick={() => router.push("/memo")}>
               今は話せない？ → メモだけ残す
             </button>
           )}
 
-          {result && emotionCfg && (
+          {result && (
             <div className="vj-result">
-              {/* 感情タグ + nuance */}
-              <div className="vj-result-top">
-                <span className="vj-result-emoji">{result.emoji}</span>
-                <div>
-                  <span
-                    className="vj-result-emotion-tag"
-                    style={{ color: emotionCfg.color, background: emotionCfg.bg, border: `1px solid ${emotionCfg.color}33` }}
-                  >
-                    {result.emotion}
-                  </span>
-                  <p className="vj-result-nuance" style={{ marginTop: "8px" }}>{result.nuance}</p>
-                </div>
-              </div>
+              {/* nuance（タイトル） */}
+              {result.nuance && (
+                <p className="vj-result-nuance">{result.nuance}</p>
+              )}
 
               <hr className="vj-divider" />
 
@@ -441,11 +390,6 @@ export default function Home() {
                   )}
                 </div>
               )}
-
-              {result.summary && <hr className="vj-divider" />}
-
-              {/* AIメッセージ */}
-              <p className="vj-result-msg">{result.message}</p>
 
               <button className="vj-logs-link" onClick={() => router.push("/logs")}>
                 過去のきろくを見る →
