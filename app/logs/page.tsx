@@ -67,9 +67,7 @@ function JournalCard({ journal }: { journal: Journal }) {
       <p className="jcard-time">
         {new Date(journal.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
       </p>
-      {journal.nuance && <p className="jcard-nuance">{journal.nuance}</p>}
       {journal.summary && <p className="jcard-summary">{journal.summary}</p>}
-      {journal.insight && <p className="jcard-insight">{journal.insight}</p>}
       {hasTranscript && (
         <div className="jcard-transcript-wrap">
           {expanded ? (
@@ -100,20 +98,12 @@ function JournalDetailModal({ journal, onClose, onBack }: { journal: Journal; on
           <p className="detail-date">{dateStr}</p>
           <button className="detail-close" onClick={onClose}>✕</button>
         </div>
-        {journal.nuance && <div className="detail-section"><p className="detail-nuance">{journal.nuance}</p></div>}
         {journal.summary && journal.summary !== journal.transcript && (
           <div className="detail-section">
-            <p className="detail-label">要約</p>
+            <p className="detail-label">話した内容</p>
             <p className="detail-summary">{journal.summary}</p>
           </div>
         )}
-
-        {journal.insight && (
-  <div className="detail-section">
-    <p className="detail-label">気づき</p>
-    <p className="detail-insight">{journal.insight}</p>
-  </div>
-)}
         {journal.transcript && (
           <div className="detail-section">
             <p className="detail-label">元の発言</p>
@@ -173,7 +163,7 @@ function CalendarModal({ allJournals, onSelect, onClose, initialDate }: {
               <div key={j.id} className="cal-list-item" onClick={() => onSelect(j)}>
                 <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", margin: "0 0 6px 0" }}>{formatCapsuleDate(j.created_at)}</p>
                 <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: "1.6", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                  {j.nuance || j.summary || j.transcript || "（記録なし）"}
+                  {j.summary || j.transcript || "（記録なし）"}
                 </p>
               </div>
             ))}
@@ -683,7 +673,6 @@ export default function LogsPage() {
                                   <p className="search-result-date">
                                     {formatDateLabel(formatDateKey(new Date(j.created_at)))} {new Date(j.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
                                   </p>
-                                  {j.nuance && <p className="search-result-nuance">{j.nuance}</p>}
                                   {j.summary && <p className="search-result-summary">{j.summary.slice(0, 60)}{j.summary.length > 60 ? "..." : ""}</p>}
                                 </div>
                               ))}
