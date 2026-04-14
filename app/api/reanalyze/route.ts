@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
       emotion: result.emotion,
       nuance: result.nuance,
       summary: result.summary,
+      insight: result.insight,
       trigger: result.trigger,
       message: "",
     });

@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       trigger: result.trigger,
       nuance: result.nuance,
       summary: result.summary,
+      insight: result.insight,
       message: "",
     });
   } catch (e: unknown) {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
         trigger: "その他",
         nuance: "",
         summary: "",
+        insight: "",
         message: "",
       },
       { status: 500 }

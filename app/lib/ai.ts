@@ -34,6 +34,7 @@ export type EmotionAnalysis = {
   message: string;
   nuance: string;
   summary: string;
+  insight: string;
 };
 
 type WeeklyJournalInput = {
@@ -90,6 +91,7 @@ function fallbackEmotionAnalysis(): EmotionAnalysis {
     message: "",
     nuance: "",
     summary: "",
+    insight: "",
   };
 }
 
@@ -132,7 +134,7 @@ export async function analyzeEmotion(
 出力は必ずJSONオブジェクトのみ。前置き・説明・マークダウン・コードブロックは禁止。
 
 返却形式:
-{"emotion":"...","trigger":"...","nuance":"...","summary":"..."}
+{"emotion":"...","trigger":"...","nuance":"...","summary":"...","insight":"..."}
 
 # emotion（内部集計用・UIには表示しない）
 次のいずれか1つ:
@@ -158,35 +160,40 @@ export async function analyzeEmotion(
 "夫婦関係の出口が見えない感覚"
 "仕事の重さが積み重なった日"
 
-悪い例:
-"イライラしている感じ" → 言い切りじゃない
-"不安な気持ち" → 感情ラベル
-"少し疲れている" → 弱すぎる
-
 # summary（ユーザーに見せる・メイン）
-以下の3点を含む2〜4文で構成する:
+以下の2点を含む2〜3文：
 
 ① 出来事（何があったか・具体的に）
 ② 感情（どう感じたか・文章で表現）
-③ 気づき（ユーザーが気づいていない可能性のあるパターン・矛盾・繰り返しを1つ）
 
 ルール:
 - 共感・励まし・アドバイス・解決提案は禁止
-- 「大変でしたね」「頑張りましたね」は禁止
-- 感情ラベル（「不安」「疲れ」など）を単独で使わない
-- 文章内で感情を表現する
-- 気づきは「〜かもしれない」「〜という傾向がある」のトーンで
-- 100〜180文字以内
+- 感情ラベルを単独で使わない
+- 80〜150文字以内
+
+# insight（ユーザーに見せる・気づき）
+- 1文・30〜60文字
+- ユーザーが自分では気づいていない可能性のある視点を1つ
+- 「あ、そういうことか」と静かにハッとさせる内容
+- 断定しすぎず、でも曖昧すぎない
+- 「〜かもしれない」「〜という傾向がある」のトーン
+- 共感・励まし・アドバイスは禁止
+- 感情ラベルを使わない
 
 良い例:
-"夫との言い合いがきっかけで、自分の気持ちをうまく伝えられなかったと話していた。言葉が出てこないというより、伝わらないことへの疲れが積み重なっているのかもしれない。"
+"うまくやろうとするほど、自分を追い込んでいる傾向があるかもしれない"
+"相手への期待より、自分への失望が積み重なっているのかもしれない"
+"言葉にしようとするたびに、感情より先に理由を探してしまうのかもしれない"
+"解決したいというより、ただ聞いてほしかっただけなのかもしれない"
 
 悪い例:
-"夫婦関係について話した。大変でしたね。" → 共感・薄い
-"不安な状態が続いている。" → 感情ラベル
+"頑張っているね" → 励まし
+"不安が強い" → 感情ラベル
+"少し休んでみては" → アドバイス
+"つらかったんだね" → 共感
 
-必ずこの4つのキーを含めて返してください:
-emotion, trigger, nuance, summary`,
+必ずこの5つのキーを含めて返してください:
+emotion, trigger, nuance, summary, insight`,
         },
         {
           role: "user",
@@ -204,8 +211,9 @@ emotion, trigger, nuance, summary`,
     const trigger = sanitizeTrigger(parsed.trigger);
     const nuance = sanitizeNuance(parsed.nuance);
     const summary = sanitizeSummary(parsed.summary);
+    const insight = sanitizeText(parsed.insight).slice(0, 100);
 
-    return { emotion, trigger, message: "", nuance, summary };
+    return { emotion, trigger, message: "", nuance, summary, insight };
   } catch (error) {
     console.error("[analyzeEmotion] ERROR:", error);
     return fallbackEmotionAnalysis();

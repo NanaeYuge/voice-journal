@@ -11,6 +11,7 @@ type AnalyzeResponse = {
   trigger?: string;
   nuance?: string;
   summary?: string;
+  insight?: string;
   error?: string;
 };
 
@@ -23,6 +24,7 @@ export default function Home() {
     emotion: string;
     nuance: string;
     summary: string;
+    insight: string;
     message: string;
   } | null>(null);
 
@@ -103,10 +105,10 @@ export default function Home() {
 
       const safeEmotion    = data.emotion    || "穏やか";
       const safeNuance     = data.nuance     || "";
-      const safeMessage    = data.message    || "";
       const safeTranscript = data.transcript || "";
       const safeTrigger    = data.trigger    || "その他";
       const safeSummary    = data.summary    || "";
+      const safeInsight    = data.insight    || "";
 
       const { data: inserted, error: insertError } = await supabase
         .from("journals")
@@ -117,8 +119,9 @@ export default function Home() {
           transcript: safeTranscript,
           emotion_trigger: safeTrigger,
           nuance: safeNuance,
-          message: safeMessage,
+          message: "",
           summary: safeSummary,
+          insight: safeInsight,
         })
         .select()
         .single();
@@ -130,7 +133,8 @@ export default function Home() {
         emotion: safeEmotion,
         nuance: safeNuance,
         summary: safeSummary,
-        message: safeMessage,
+        insight: safeInsight,
+        message: "",
       });
       setEditSummary(safeSummary);
     } catch {
@@ -138,6 +142,7 @@ export default function Home() {
         emotion: "穏やか",
         nuance: "",
         summary: "",
+        insight: "",
         message: "",
       });
     } finally {
@@ -159,8 +164,9 @@ export default function Home() {
       await supabase.from("journals").update({
         summary: editSummary,
         emotion: data.emotion || result.emotion,
-        message: data.message || "",
+        message: "",
         nuance: data.nuance || result.nuance,
+        insight: data.insight || result.insight,
         emotion_trigger: data.trigger || "その他",
       }).eq("id", savedId);
 
@@ -169,6 +175,7 @@ export default function Home() {
         summary: editSummary,
         emotion: data.emotion || result.emotion,
         nuance: data.nuance || result.nuance,
+        insight: data.insight || result.insight,
         message: "",
       });
       setIsEditingSummary(false);
@@ -237,36 +244,20 @@ export default function Home() {
         .vj-memo-link { margin-top: 24px; font-size: 11px; color: rgba(255,255,255,0.15); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-memo-link:hover { color: rgba(139,92,246,0.6); }
 
-        /* 結果カード */
         .vj-result { margin-top: 52px; width: 100%; animation: vj-emerge 0.8s cubic-bezier(0.16,1,0.3,1) forwards; }
         @keyframes vj-emerge { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
 
-        /* nuance（タイトル） */
-        .vj-result-nuance {
-          font-family: 'Zen Old Mincho', serif;
-          font-size: 18px;
-          font-weight: 500;
-          color: rgba(255,255,255,0.88);
-          margin: 0 0 16px 0;
-          letter-spacing: 0.04em;
-          line-height: 1.5;
-        }
+        .vj-result-nuance { font-family: 'Zen Old Mincho', serif; font-size: 18px; font-weight: 500; color: rgba(255,255,255,0.88); margin: 0 0 16px 0; letter-spacing: 0.04em; line-height: 1.5; }
 
         .vj-divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 16px 0; }
 
-        /* 要約セクション */
         .vj-summary-section { margin-bottom: 16px; }
         .vj-summary-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .vj-summary-label { font-size: 10px; color: rgba(255,255,255,0.25); letter-spacing: 0.2em; font-family: 'Zen Old Mincho', serif; }
         .vj-summary-edit-btn { font-size: 10px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; transition: color 0.2s; padding: 0; }
         .vj-summary-edit-btn:hover { color: rgba(139,92,246,0.9); }
         .vj-summary-text { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.8; letter-spacing: 0.03em; margin: 0; }
-        .vj-summary-textarea {
-          width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.25);
-          border-radius: 10px; padding: 10px 12px; font-size: 13px; color: rgba(255,255,255,0.8);
-          outline: none; resize: none; font-family: 'Noto Sans JP', sans-serif;
-          letter-spacing: 0.03em; line-height: 1.7; box-sizing: border-box; transition: border-color 0.2s;
-        }
+        .vj-summary-textarea { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.25); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: rgba(255,255,255,0.8); outline: none; resize: none; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.03em; line-height: 1.7; box-sizing: border-box; transition: border-color 0.2s; }
         .vj-summary-textarea:focus { border-color: rgba(139,92,246,0.5); }
         .vj-summary-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 6px; }
         .vj-summary-save { font-size: 11px; color: rgba(167,139,250,0.9); background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 8px; padding: 6px 14px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; transition: all 0.2s; }
@@ -275,6 +266,8 @@ export default function Home() {
         .vj-summary-cancel { font-size: 11px; color: rgba(255,255,255,0.2); background: none; border: none; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; transition: color 0.2s; padding: 6px 8px; }
         .vj-summary-cancel:hover { color: rgba(255,255,255,0.4); }
         .vj-summary-saved { font-size: 10px; color: rgba(139,92,246,0.6); letter-spacing: 0.08em; animation: vj-emerge 0.3s ease; }
+
+        .vj-result-insight { font-size: 13px; color: rgba(167,139,250,0.7); line-height: 1.85; letter-spacing: 0.03em; margin: 0; font-style: italic; }
 
         .vj-logs-link { display: inline-block; margin-top: 20px; font-size: 12px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-logs-link:hover { color: rgba(139,92,246,0.9); }
@@ -351,14 +344,12 @@ export default function Home() {
 
           {result && (
             <div className="vj-result">
-              {/* nuance（タイトル） */}
               {result.nuance && (
                 <p className="vj-result-nuance">{result.nuance}</p>
               )}
 
               <hr className="vj-divider" />
 
-              {/* 要約セクション */}
               {(result.summary || isEditingSummary) && (
                 <div className="vj-summary-section">
                   <div className="vj-summary-header">
@@ -389,6 +380,13 @@ export default function Home() {
                     <p className="vj-summary-text">{result.summary}</p>
                   )}
                 </div>
+              )}
+
+              {result.insight && (
+                <>
+                  <hr className="vj-divider" />
+                  <p className="vj-result-insight">{result.insight}</p>
+                </>
               )}
 
               <button className="vj-logs-link" onClick={() => router.push("/logs")}>
