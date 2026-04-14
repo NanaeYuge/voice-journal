@@ -11,6 +11,7 @@ type Journal = {
   transcript: string;
   summary?: string;
   nuance?: string;
+  insight?: string;
   emotion_trigger?: string;
   message?: string;
   source?: string;
@@ -68,6 +69,7 @@ function JournalCard({ journal }: { journal: Journal }) {
       </p>
       {journal.nuance && <p className="jcard-nuance">{journal.nuance}</p>}
       {journal.summary && <p className="jcard-summary">{journal.summary}</p>}
+      {journal.insight && <p className="jcard-insight">{journal.insight}</p>}
       {hasTranscript && (
         <div className="jcard-transcript-wrap">
           {expanded ? (
@@ -105,6 +107,13 @@ function JournalDetailModal({ journal, onClose, onBack }: { journal: Journal; on
             <p className="detail-summary">{journal.summary}</p>
           </div>
         )}
+
+        {journal.insight && (
+  <div className="detail-section">
+    <p className="detail-label">気づき</p>
+    <p className="detail-insight">{journal.insight}</p>
+  </div>
+)}
         {journal.transcript && (
           <div className="detail-section">
             <p className="detail-label">元の発言</p>
@@ -596,6 +605,8 @@ export default function LogsPage() {
         .detail-transcript { font-size: 12px; color: rgba(255,255,255,0.32); line-height: 1.8; letter-spacing: 0.03em; margin: 0; padding: 12px 14px; background: rgba(255,255,255,0.02); border-radius: 10px; border-left: 2px solid rgba(139,92,246,0.15); }
         .detail-close-btn { display: block; width: 100%; padding: 12px; border: none; background: none; color: rgba(255,255,255,0.18); font-size: 12px; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.1em; cursor: pointer; transition: color 0.2s; text-align: center; margin-top: 4px; }
         .detail-close-btn:hover { color: rgba(255,255,255,0.38); }
+        .jcard-insight { font-size: 12px; color: rgba(167,139,250,0.6); line-height: 1.75; letter-spacing: 0.03em; margin: 0; font-style: italic; }
+.detail-insight { font-size: 13px; color: rgba(167,139,250,0.7); line-height: 1.85; letter-spacing: 0.03em; margin: 0; font-style: italic; }
       `}</style>
 
       <div className="logs-root">
