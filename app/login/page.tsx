@@ -34,17 +34,24 @@ export default function LoginPage() {
         setMessage("このメールアドレスはすでに登録されています。ログインしてください。");
         } else {
   // 新規登録成功
-        if (data.user) {
-            await supabase.from("user_consents").insert({
-  user_id: data.user.id,
-  terms_version: "1.0",
-  privacy_version: "1.0",
-  ai_analysis_consent: true,
-  data_storage_consent: true,
-  product_improvement_consent: true,
-});
-        }
-        setMessage("確認メールを送りました。メールをチェックしてね。");
+if (data.user) {
+  await supabase.from("user_consents").insert({
+    user_id: data.user.id,
+    terms_version: "1.0",
+    privacy_version: "1.0",
+    ai_analysis_consent: true,
+    data_storage_consent: true,
+    product_improvement_consent: true,
+  });
+
+  // ウェルカムメール送信
+  await fetch("/api/send-welcome", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: data.user.email }),
+  });
+}
+setMessage("確認メールを送りました。メールをチェックしてね。");
 }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
