@@ -67,7 +67,7 @@ function JournalCard({ journal }: { journal: Journal }) {
       <p className="jcard-time">
         {new Date(journal.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
       </p>
-      {journal.summary && <p className="jcard-summary">{journal.summary}</p>}
+      {journal.nuance && <p className="jcard-nuance">{journal.nuance}</p>}
       {hasTranscript && (
         <div className="jcard-transcript-wrap">
           {expanded ? (
@@ -98,10 +98,10 @@ function JournalDetailModal({ journal, onClose, onBack }: { journal: Journal; on
           <p className="detail-date">{dateStr}</p>
           <button className="detail-close" onClick={onClose}>✕</button>
         </div>
-        {journal.summary && journal.summary !== journal.transcript && (
+        {journal.nuance && (
           <div className="detail-section">
-            <p className="detail-label">話した内容</p>
-            <p className="detail-summary">{journal.summary}</p>
+            <p className="detail-label">この記録</p>
+            <p className="detail-nuance">{journal.nuance}</p>
           </div>
         )}
         {journal.transcript && (
@@ -163,7 +163,7 @@ function CalendarModal({ allJournals, onSelect, onClose, initialDate }: {
               <div key={j.id} className="cal-list-item" onClick={() => onSelect(j)}>
                 <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", margin: "0 0 6px 0" }}>{formatCapsuleDate(j.created_at)}</p>
                 <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: "1.6", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                  {j.summary || j.transcript || "（記録なし）"}
+                  {j.nuance || j.transcript || "（記録なし）"}
                 </p>
               </div>
             ))}
@@ -406,7 +406,6 @@ export default function LogsPage() {
   const cutoff = Date.now() - period * 24 * 60 * 60 * 1000;
   const periodDates = sortedDates.filter((key) => new Date(key).getTime() > cutoff);
 
-  // debounce検索
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults(null);
@@ -462,7 +461,6 @@ export default function LogsPage() {
         .jcard:hover { border-color: rgba(139,92,246,0.2); }
         .jcard-time { font-size: 10px; color: rgba(255,255,255,0.18); letter-spacing: 0.08em; margin: 0 0 10px 0; }
         .jcard-nuance { font-size: 16px; font-weight: 500; color: rgba(255,255,255,0.88); letter-spacing: 0.04em; line-height: 1.5; margin: 0 0 10px 0; font-family: 'Zen Old Mincho', serif; }
-        .jcard-summary { font-size: 13px; color: rgba(255,255,255,0.52); line-height: 1.8; letter-spacing: 0.03em; margin: 0 0 10px 0; }
         .jcard-transcript-wrap { margin-top: 4px; }
         .jcard-expand-btn { font-size: 11px; color: rgba(139,92,246,0.4); background: none; border: none; cursor: pointer; letter-spacing: 0.04em; font-family: 'Noto Sans JP', sans-serif; padding: 0; transition: color 0.2s; text-align: left; line-height: 1.6; }
         .jcard-expand-btn:hover { color: rgba(139,92,246,0.8); }
@@ -471,7 +469,6 @@ export default function LogsPage() {
         .today-empty { font-size: 13px; color: rgba(255,255,255,0.18); letter-spacing: 0.06em; padding: 12px 0 20px; }
         .timeline-wrap { margin-top: 44px; }
 
-        /* 検索 */
         .search-wrap { position: relative; margin-bottom: 16px; }
         .search-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.2); border-radius: 12px; padding: 12px 40px 12px 16px; font-size: 13px; color: rgba(255,255,255,0.7); outline: none; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.04em; box-sizing: border-box; transition: border-color 0.2s; }
         .search-input:focus { border-color: rgba(139,92,246,0.45); }
@@ -481,8 +478,7 @@ export default function LogsPage() {
         .search-result-item { padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; animation: card-in 0.3s cubic-bezier(0.16,1,0.3,1) both; }
         .search-result-item:hover { border-color: rgba(139,92,246,0.3); }
         .search-result-date { font-size: 10px; color: rgba(255,255,255,0.2); letter-spacing: 0.06em; margin: 0 0 6px 0; }
-        .search-result-nuance { font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.82); letter-spacing: 0.04em; margin: 0 0 6px 0; font-family: 'Zen Old Mincho', serif; line-height: 1.5; }
-        .search-result-summary { font-size: 12px; color: rgba(255,255,255,0.4); line-height: 1.65; letter-spacing: 0.03em; margin: 0; }
+        .search-result-nuance { font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.82); letter-spacing: 0.04em; margin: 0; font-family: 'Zen Old Mincho', serif; line-height: 1.5; }
 
         .summary-section { margin-top: 44px; }
         .summary-card { border-radius: 14px; border: 1px solid rgba(139,92,246,0.15); background: rgba(139,92,246,0.03); padding: 22px 24px; min-height: 72px; display: flex; align-items: flex-start; }
@@ -591,12 +587,9 @@ export default function LogsPage() {
         .detail-section { margin-bottom: 20px; }
         .detail-label { font-size: 10px; color: rgba(255,255,255,0.25); letter-spacing: 0.2em; margin: 0 0 8px 0; font-family: 'Zen Old Mincho', serif; }
         .detail-nuance { font-size: 18px; font-weight: 500; color: rgba(255,255,255,0.88); letter-spacing: 0.04em; line-height: 1.5; margin: 0; font-family: 'Zen Old Mincho', serif; }
-        .detail-summary { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.85; letter-spacing: 0.03em; margin: 0; }
         .detail-transcript { font-size: 12px; color: rgba(255,255,255,0.32); line-height: 1.8; letter-spacing: 0.03em; margin: 0; padding: 12px 14px; background: rgba(255,255,255,0.02); border-radius: 10px; border-left: 2px solid rgba(139,92,246,0.15); }
         .detail-close-btn { display: block; width: 100%; padding: 12px; border: none; background: none; color: rgba(255,255,255,0.18); font-size: 12px; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.1em; cursor: pointer; transition: color 0.2s; text-align: center; margin-top: 4px; }
         .detail-close-btn:hover { color: rgba(255,255,255,0.38); }
-        .jcard-insight { font-size: 12px; color: rgba(167,139,250,0.6); line-height: 1.75; letter-spacing: 0.03em; margin: 0; font-style: italic; }
-.detail-insight { font-size: 13px; color: rgba(167,139,250,0.7); line-height: 1.85; letter-spacing: 0.03em; margin: 0; font-style: italic; }
       `}</style>
 
       <div className="logs-root">
@@ -622,7 +615,6 @@ export default function LogsPage() {
             <div className="logs-loading"><p className="logs-loading-text">よみこみ中...</p></div>
           ) : (
             <>
-              {/* きろくタブ */}
               {activeTab === "record" && (
                 <>
                   {mainJournals.length === 0 ? (
@@ -673,7 +665,7 @@ export default function LogsPage() {
                                   <p className="search-result-date">
                                     {formatDateLabel(formatDateKey(new Date(j.created_at)))} {new Date(j.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
                                   </p>
-                                  {j.summary && <p className="search-result-summary">{j.summary.slice(0, 60)}{j.summary.length > 60 ? "..." : ""}</p>}
+                                  {j.nuance && <p className="search-result-nuance">{j.nuance}</p>}
                                 </div>
                               ))}
                             </>
@@ -693,7 +685,6 @@ export default function LogsPage() {
                 </>
               )}
 
-              {/* 気づきタブ */}
               {activeTab === "insight" && (
                 <div className="tab-empty">
                   <p className="tab-empty-icon">🌱</p>
@@ -703,7 +694,6 @@ export default function LogsPage() {
                 </div>
               )}
 
-              {/* ふりかえりタブ */}
               {activeTab === "review" && (
                 <>
                   <div className="period-tabs-wrap">

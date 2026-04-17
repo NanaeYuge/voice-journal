@@ -1,4 +1,4 @@
-console.log("[ai.ts] loaded version 2026-04-13-1300");
+console.log("[ai.ts] loaded version 2026-04-17-1");
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -63,7 +63,7 @@ function sanitizeTrigger(value: unknown): Trigger {
 
 function sanitizeNuance(value: unknown): string {
   const text = sanitizeText(value);
-  return text.slice(0, 60);
+  return text.slice(0, 40);
 }
 
 function sanitizeSummary(value: unknown): string {
@@ -126,7 +126,7 @@ export async function analyzeEmotion(
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.3,
+      temperature: 0.2,
       messages: [
         {
           role: "system",
@@ -147,50 +147,43 @@ export async function analyzeEmotion(
 "人間関係","仕事","体調","睡眠","家族","お金","自分自身","その他"
 - transcript全体の中心テーマを1つ選ぶ
 
-# nuance（ユーザーに見せる・タイトル的な役割）
-- 10〜25文字
-- その記録の「核心」を一言で言い切る
-- 言い切り表現（「〜な感じ」「〜かな」は禁止）
+# nuance（最重要・タイトルとしてユーザーに見せる）
+- 8〜20文字
+- その日・その瞬間に「何があったか」が一目でわかる
+- 具体的な状況・人物・出来事を含める
 - 感情ラベルを使わない
-- 名詞または短文で表現する
+- 言い切り表現（「〜な感じ」「〜かな」「〜について」禁止）
+- 体言止めまたは短文
 
 良い例:
-"思い通りにいかない苛立ち"
-"伝わらないもどかしさ"
-"夫婦関係の出口が見えない感覚"
-"仕事の重さが積み重なった日"
+"息子の誕生日前日の迷い"
+"夫に言えなかったこと"
+"仕事を断れなかった夜"
+"ひとりで抱えすぎた週末"
+"上司に怒られた帰り道"
+"久しぶりに泣いた夜"
 
-# summary（ユーザーに見せる・メイン）
+悪い例:
+"思い通りにいかない苛立ち" → 状況が見えない
+"伝わらないもどかしさ" → 抽象的すぎる
+"不安が強い日" → 感情ラベル
+"夫婦関係について" → 「について」禁止
+"なんとなく疲れた" → 具体性なし
+
+# summary（内部保存用・現在UIには表示しない）
 以下の2点を含む2〜3文：
-
 ① 出来事（何があったか・具体的に）
 ② 感情（どう感じたか・文章で表現）
-
 ルール:
 - 共感・励まし・アドバイス・解決提案は禁止
 - 感情ラベルを単独で使わない
 - 80〜150文字以内
 
-# insight（ユーザーに見せる・気づき）
+# insight（内部保存用・現在UIには表示しない）
 - 1文・30〜60文字
 - ユーザーが自分では気づいていない可能性のある視点を1つ
-- 「あ、そういうことか」と静かにハッとさせる内容
-- 断定しすぎず、でも曖昧すぎない
 - 「〜かもしれない」「〜という傾向がある」のトーン
 - 共感・励まし・アドバイスは禁止
-- 感情ラベルを使わない
-
-良い例:
-"うまくやろうとするほど、自分を追い込んでいる傾向があるかもしれない"
-"相手への期待より、自分への失望が積み重なっているのかもしれない"
-"言葉にしようとするたびに、感情より先に理由を探してしまうのかもしれない"
-"解決したいというより、ただ聞いてほしかっただけなのかもしれない"
-
-悪い例:
-"頑張っているね" → 励まし
-"不安が強い" → 感情ラベル
-"少し休んでみては" → アドバイス
-"つらかったんだね" → 共感
 
 必ずこの5つのキーを含めて返してください:
 emotion, trigger, nuance, summary, insight`,
@@ -231,7 +224,7 @@ export async function generateWeeklySummary(
   const normalized = journals
     .map((journal) => {
       const trigger = sanitizeTrigger(journal.trigger);
-      const nuance = sanitizeText(journal.nuance).slice(0, 60);
+      const nuance = sanitizeText(journal.nuance).slice(0, 40);
       const transcript = sanitizeText(journal.transcript).slice(0, 200);
       const created_at = sanitizeText(journal.created_at);
       return { trigger, nuance, transcript, created_at };
@@ -247,7 +240,7 @@ export async function generateWeeklySummary(
         ? new Date(journal.created_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })
         : "";
       const parts: string[] = [`${index + 1}. ${date} テーマ:${journal.trigger}`];
-      if (journal.nuance) parts.push(`核心:${journal.nuance}`);
+      if (journal.nuance) parts.push(`タイトル:${journal.nuance}`);
       if (journal.transcript) parts.push(`内容:${journal.transcript}`);
       return parts.join(" / ");
     })
