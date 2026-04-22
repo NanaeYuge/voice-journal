@@ -18,6 +18,12 @@ type Journal = {
   linked_journal_id?: number;
 };
 
+type InsightMemo = {
+  id: number;
+  content: string;
+  created_at: string;
+};
+
 type TimeCapsule = {
   journal: Journal;
   label: string;
@@ -305,6 +311,9 @@ export default function LogsPage() {
   const [activeTab, setActiveTab] = useState<"record" | "insight" | "review">("record");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Journal[] | null>(null);
+  const [insightMemos, setInsightMemos] = useState<InsightMemo[]>([]);
+  const [memoInput, setMemoInput] = useState("");
+  const [memoSaving, setMemoSaving] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -348,6 +357,46 @@ export default function LogsPage() {
     };
     fetchJournals();
   }, []);
+
+  useEffect(() => {
+    const fetchMemos = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const { data } = await supabase
+        .from("insight_memos")
+        .select("*")
+        .order("created_at", { ascending: false });
+      setInsightMemos(data || []);
+    };
+    fetchMemos();
+  }, []);
+
+  const handleSaveMemo = async () => {
+    if (!memoInput.trim()) return;
+    setMemoSaving(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const { data } = await supabase
+        .from("insight_memos")
+        .insert({ user_id: userData.user.id, content: memoInput.trim() })
+        .select()
+        .single();
+      if (data) {
+        setInsightMemos((prev) => [data, ...prev]);
+        setMemoInput("");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setMemoSaving(false);
+    }
+  };
+
+  const handleDeleteMemo = async (id: number) => {
+    await supabase.from("insight_memos").delete().eq("id", id);
+    setInsightMemos((prev) => prev.filter((m) => m.id !== id));
+  };
 
   useEffect(() => {
     if (journals.length === 0) return;
@@ -492,12 +541,6 @@ export default function LogsPage() {
         .period-tab:hover { color: rgba(255,255,255,0.5); }
         .period-tab--active { background: rgba(139,92,246,0.2); color: rgba(167,139,250,0.9); }
 
-        .tab-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 0; text-align: center; }
-        .tab-empty-icon { font-size: 32px; opacity: 0.4; margin-bottom: 16px; }
-        .tab-empty-title { font-family: 'Zen Old Mincho', serif; font-size: 16px; color: rgba(255,255,255,0.4); letter-spacing: 0.2em; margin: 0 0 12px 0; }
-        .tab-empty-text { font-size: 13px; color: rgba(255,255,255,0.2); line-height: 2; margin: 0 0 12px 0; }
-        .tab-empty-sub { font-size: 11px; color: rgba(139,92,246,0.3); letter-spacing: 0.08em; margin: 0; }
-
         .capsule-wrap { margin-top: 52px; animation: card-in 0.6s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.15s; opacity: 0; }
         .capsule-card { border-radius: 16px; border: 1px solid rgba(139,92,246,0.2); background: rgba(139,92,246,0.04); padding: 24px 22px; position: relative; overflow: hidden; }
         .capsule-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(139,92,246,0.35), transparent); }
@@ -590,6 +633,23 @@ export default function LogsPage() {
         .detail-transcript { font-size: 12px; color: rgba(255,255,255,0.32); line-height: 1.8; letter-spacing: 0.03em; margin: 0; padding: 12px 14px; background: rgba(255,255,255,0.02); border-radius: 10px; border-left: 2px solid rgba(139,92,246,0.15); }
         .detail-close-btn { display: block; width: 100%; padding: 12px; border: none; background: none; color: rgba(255,255,255,0.18); font-size: 12px; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.1em; cursor: pointer; transition: color 0.2s; text-align: center; margin-top: 4px; }
         .detail-close-btn:hover { color: rgba(255,255,255,0.38); }
+
+        /* 気づきメモ */
+        .memo-input-wrap { margin-bottom: 28px; }
+        .memo-textarea { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.2); border-radius: 14px; padding: 16px; font-size: 14px; color: rgba(255,255,255,0.75); outline: none; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.04em; line-height: 1.8; resize: none; box-sizing: border-box; transition: border-color 0.2s; min-height: 100px; }
+        .memo-textarea:focus { border-color: rgba(139,92,246,0.45); }
+        .memo-textarea::placeholder { color: rgba(255,255,255,0.18); }
+        .memo-save-btn { width: 100%; margin-top: 10px; padding: 13px; border-radius: 12px; border: 1px solid rgba(139,92,246,0.35); background: rgba(139,92,246,0.1); color: rgba(167,139,250,0.9); font-size: 13px; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s; }
+        .memo-save-btn:hover { background: rgba(139,92,246,0.18); }
+        .memo-save-btn:disabled { opacity: 0.4; cursor: default; }
+        .memo-list { margin-top: 8px; }
+        .memo-card { padding: 16px 18px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); margin-bottom: 10px; animation: card-in 0.4s cubic-bezier(0.16,1,0.3,1) both; position: relative; }
+        .memo-card-date { font-size: 10px; color: rgba(255,255,255,0.18); letter-spacing: 0.08em; margin: 0 0 8px 0; }
+        .memo-card-content { font-size: 14px; color: rgba(255,255,255,0.78); line-height: 1.8; letter-spacing: 0.03em; margin: 0; white-space: pre-wrap; }
+        .memo-delete-btn { position: absolute; top: 14px; right: 14px; background: none; border: none; color: rgba(255,255,255,0.1); font-size: 12px; cursor: pointer; transition: color 0.2s; padding: 0; }
+        .memo-delete-btn:hover { color: rgba(255,100,100,0.4); }
+        .memo-empty { text-align: center; padding: 48px 0; }
+        .memo-empty-text { font-size: 13px; color: rgba(255,255,255,0.18); line-height: 2; margin: 0; letter-spacing: 0.06em; }
       `}</style>
 
       <div className="logs-root">
@@ -686,12 +746,42 @@ export default function LogsPage() {
               )}
 
               {activeTab === "insight" && (
-                <div className="tab-empty">
-                  <p className="tab-empty-icon">🌱</p>
-                  <p className="tab-empty-title">気づき</p>
-                  <p className="tab-empty-text">記録が積み重なると<br />あなただけのパターンが<br />見えてくるよ</p>
-                  <p className="tab-empty-sub">言葉のクセ・感情の流れ・繰り返すテーマ</p>
-                </div>
+                <>
+                  <p className="logs-section-label">気づきのメモ</p>
+                  <div className="memo-input-wrap">
+                    <textarea
+                      className="memo-textarea"
+                      placeholder="話していて気づいたこと、ふと思ったこと..."
+                      value={memoInput}
+                      onChange={(e) => setMemoInput(e.target.value)}
+                    />
+                    <button
+                      className="memo-save-btn"
+                      onClick={handleSaveMemo}
+                      disabled={memoSaving || !memoInput.trim()}
+                    >
+                      {memoSaving ? "保存中..." : "書き留める"}
+                    </button>
+                  </div>
+
+                  <div className="memo-list">
+                    {insightMemos.length === 0 ? (
+                      <div className="memo-empty">
+                        <p className="memo-empty-text">気づいたことを<br />ここに書き留めてみて</p>
+                      </div>
+                    ) : (
+                      insightMemos.map((memo) => (
+                        <div key={memo.id} className="memo-card">
+                          <p className="memo-card-date">
+                            {formatDateLabel(formatDateKey(new Date(memo.created_at)))} {new Date(memo.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                          <p className="memo-card-content">{memo.content}</p>
+                          <button className="memo-delete-btn" onClick={() => handleDeleteMemo(memo.id)}>✕</button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
               )}
 
               {activeTab === "review" && (
