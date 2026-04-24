@@ -200,8 +200,8 @@ export default function Home() {
         .vj-memo-link { margin-top: 24px; font-size: 11px; color: rgba(255,255,255,0.15); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-memo-link:hover { color: rgba(139,92,246,0.6); }
 
-        .vj-result { margin-top: 52px; width: 100%; display: flex; flex-direction: column; align-items: center; animation: vj-emerge 1.2s cubic-bezier(0.16,1,0.3,1) forwards; }
-        @keyframes vj-emerge { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        .vj-result { display: flex; flex-direction: column; align-items: center; animation: vj-emerge 1.2s cubic-bezier(0.16,1,0.3,1) forwards; text-align: center; }
+        @keyframes vj-emerge { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
         .vj-afterword { font-family: 'Zen Old Mincho', serif; font-size: 16px; font-weight: 400; color: rgba(255,255,255,0.55); line-height: 2; letter-spacing: 0.08em; text-align: center; margin: 0 0 36px 0; }
 
@@ -272,6 +272,14 @@ export default function Home() {
                 )}
               </button>
             )}
+            {result && (
+              <div className="vj-result">
+                <p className="vj-afterword">{result.afterword}</p>
+                <button className="vj-logs-link" onClick={() => router.push("/logs")}>
+                  きろくを見る →
+                </button>
+              </div>
+            )}
           </div>
 
           {!isRecording && !isSilence && !isAnalyzing && !result && (
@@ -280,14 +288,6 @@ export default function Home() {
             </button>
           )}
 
-          {result && (
-            <div className="vj-result">
-              <p className="vj-afterword">{result.afterword}</p>
-              <button className="vj-logs-link" onClick={() => router.push("/logs")}>
-                きろくを見る →
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </>
