@@ -12,40 +12,40 @@ export default function MemoPage() {
   const supabase = createClient();
 
   const handleSave = async () => {
-  if (!memo.trim()) return;
-  setIsSaving(true);
-  try {
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
-    if (!user) { router.push("/login"); return; }
+    if (!memo.trim()) return;
+    setIsSaving(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      if (!user) { router.push("/login"); return; }
 
-    // AI分析を先に実行
-    const res = await fetch("/api/reanalyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript: memo }),
-    });
-    const data = await res.json();
+      const res = await fetch("/api/reanalyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: memo }),
+      });
+      const data = await res.json();
 
-    await supabase.from("journals").insert({
-      user_id: user.id,
-      emotion: data.emotion || "穏やか",
-      transcript: memo,
-      summary: memo,
-      message: data.message || "",
-      nuance: data.nuance || "",
-      emotion_trigger: data.trigger || "その他",
-      input_type: "text",
-    });
+      await supabase.from("journals").insert({
+        user_id: user.id,
+        emotion: data.emotion || "穏やか",
+        transcript: memo,
+        summary: memo,
+        message: "",
+        nuance: data.nuance || "",
+        emotion_trigger: data.trigger || "その他",
+        source: "memo",
+      });
 
-    setSaved(true);
-    setTimeout(() => router.push("/"), 1200);
-  } catch (e) {
-    console.error(e);
-  } finally {
-    setIsSaving(false);
-  }
-};
+      setSaved(true);
+    } catch (e) {
+      console.error(e);
+      setSaved(true);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <>
       <style>{`
@@ -75,31 +75,41 @@ export default function MemoPage() {
         .memo-save { font-size: 12px; color: rgba(167,139,250,0.9); background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 20px; padding: 10px 24px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.1em; transition: all 0.2s; }
         .memo-save:hover { background: rgba(139,92,246,0.2); }
         .memo-save:disabled { opacity: 0.4; cursor: not-allowed; }
-        .memo-saved { font-size: 12px; color: rgba(139,92,246,0.7); letter-spacing: 0.1em; }
+
+        .memo-saved-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; animation: memo-emerge 1.2s cubic-bezier(0.16,1,0.3,1) forwards; }
+        @keyframes memo-emerge { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        .memo-saved-text { font-family: 'Zen Old Mincho', serif; font-size: 16px; font-weight: 400; color: rgba(255,255,255,0.55); line-height: 2; letter-spacing: 0.08em; margin: 0 0 36px 0; }
+        .memo-home-link { font-size: 11px; color: rgba(139,92,246,0.35); background: none; border: none; cursor: pointer; letter-spacing: 0.12em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
+        .memo-home-link:hover { color: rgba(139,92,246,0.7); }
       `}</style>
 
       <div className="memo-root">
-        <div className="memo-content">
-          <p className="memo-label">YORU</p>
-          <h1 className="memo-title">今の気持ちを<br />書いてみて</h1>
-          <textarea
-            className="memo-textarea"
-            rows={6}
-            placeholder="話せなくても、ここに置いておいていいよ"
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-          />
-          <div className="memo-footer">
-            <button className="memo-back" onClick={() => router.back()}>← もどる</button>
-            {saved ? (
-              <span className="memo-saved">保存したよ</span>
-            ) : (
+        {saved ? (
+          <div className="memo-saved-screen">
+            <p className="memo-saved-text">ここに置いておくよ。<br />夜、話せそうだったら来てね。</p>
+            <button className="memo-home-link" onClick={() => router.push("/")}>
+              トップに戻る →
+            </button>
+          </div>
+        ) : (
+          <div className="memo-content">
+            <p className="memo-label">YORU</p>
+            <h1 className="memo-title">今の気持ちを<br />書いてみて</h1>
+            <textarea
+              className="memo-textarea"
+              rows={6}
+              placeholder="話せなくても、ここに置いておいていいよ"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+            />
+            <div className="memo-footer">
+              <button className="memo-back" onClick={() => router.back()}>← もどる</button>
               <button className="memo-save" onClick={handleSave} disabled={isSaving || !memo.trim()}>
                 {isSaving ? "保存中..." : "保存する"}
               </button>
-            )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   );

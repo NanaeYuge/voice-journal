@@ -211,8 +211,7 @@ export default function Home() {
         .vj-nav { position: fixed; top: 22px; right: 22px; z-index: 20; display: flex; gap: 8px; }
         .vj-nav-btn { font-size: 11px; color: rgba(255,255,255,0.18); background: none; border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; padding: 7px 18px; cursor: pointer; letter-spacing: 0.1em; transition: all 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-nav-btn:hover { color: rgba(255,255,255,0.45); border-color: rgba(255,255,255,0.12); }
-        .vj-nav-btn--logout { color: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.04); }
-        .vj-nav-btn--logout:hover { color: rgba(255,100,100,0.5); border-color: rgba(255,100,100,0.15); }
+
       `}</style>
 
       <div className="vj-root">
@@ -222,7 +221,7 @@ export default function Home() {
 
         <nav className="vj-nav">
           <button className="vj-nav-btn" onClick={() => router.push("/logs")}>きろく</button>
-          <button className="vj-nav-btn vj-nav-btn--logout" onClick={async () => { await supabase.auth.signOut(); router.push("/login"); }}>ログアウト</button>
+          <button className="vj-nav-btn" onClick={() => router.push("/settings")}>設定</button>
         </nav>
 
         <div className="vj-content">
