@@ -15,20 +15,37 @@ type AnalyzeResponse = {
   error?: string;
 };
 
+function getAfterword(transcriptLength: number): string {
+  const hour = new Date().getHours();
+
+  const isShort = transcriptLength < 100;
+  const isLong = transcriptLength >= 300;
+
+  const isDeepNight = hour >= 22 || hour < 5;
+  const isMorning = hour >= 5 && hour < 11;
+
+  if (isDeepNight) {
+    if (isLong) return "こんな時間まで、全部聞いてたよ。ここに残ってるよ。";
+    return "こんな時間に来てくれたんだね。ちゃんとここにいたよ。";
+  }
+
+  if (isMorning) {
+    if (isShort) return "今日の始まりに、少しだけ話してくれた。ここに残ってるよ。";
+    return "今日の始まりに話してくれた。ちゃんとここに残ってるよ。";
+  }
+
+  if (isShort) return "少しだけでも、ここに残ってるよ。";
+  if (isLong) return "たくさん話してくれたね。全部、ちゃんとここに残ってるよ。";
+  return "気づけたこと、ちゃんとここに残ってるよ。";
+}
+
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSilence, setIsSilence] = useState(false);
-  const [savedId, setSavedId] = useState<number | null>(null);
   const [result, setResult] = useState<{
-    emotion: string;
-    summary: string;
+    afterword: string;
   } | null>(null);
-
-  const [isEditingSummary, setIsEditingSummary] = useState(false);
-  const [editSummary, setEditSummary] = useState("");
-  const [isSavingSummary, setIsSavingSummary] = useState(false);
-  const [summarySaved, setSummarySaved] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -64,9 +81,6 @@ export default function Home() {
       mediaRecorder.start();
       setIsRecording(true);
       setResult(null);
-      setSavedId(null);
-      setIsEditingSummary(false);
-      setSummarySaved(false);
     } catch {
       setIsRecording(false);
     }
@@ -107,7 +121,7 @@ export default function Home() {
       const safeSummary    = data.summary    || "";
       const safeInsight    = data.insight    || "";
 
-      const { data: inserted, error: insertError } = await supabase
+      await supabase
         .from("journals")
         .insert({
           user_id: user.id,
@@ -119,50 +133,14 @@ export default function Home() {
           message: "",
           summary: safeSummary,
           insight: safeInsight,
-        })
-        .select()
-        .single();
+        });
 
-      if (insertError) throw new Error(`DB保存失敗: ${insertError.message}`);
-      if (inserted) setSavedId(inserted.id);
-
-      setResult({ emotion: safeEmotion, summary: safeSummary });
-      setEditSummary(safeSummary);
+      const afterword = getAfterword(safeTranscript.length);
+      setResult({ afterword });
     } catch {
-      setResult({ emotion: "穏やか", summary: "" });
+      setResult({ afterword: "気づけたこと、ちゃんとここに残ってるよ。" });
     } finally {
       setIsAnalyzing(false);
-    }
-  };
-
-  const handleSaveSummary = async () => {
-    if (!savedId || !result) return;
-    setIsSavingSummary(true);
-    try {
-      const res = await fetch("/api/reanalyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: editSummary }),
-      });
-      const data = await res.json();
-
-      await supabase.from("journals").update({
-        summary: editSummary,
-        emotion: data.emotion || result.emotion,
-        message: "",
-        nuance: data.nuance || "",
-        insight: data.insight || "",
-        emotion_trigger: data.trigger || "その他",
-      }).eq("id", savedId);
-
-      setResult({ emotion: data.emotion || result.emotion, summary: editSummary });
-      setIsEditingSummary(false);
-      setSummarySaved(true);
-      setTimeout(() => setSummarySaved(false), 2000);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSavingSummary(false);
     }
   };
 
@@ -222,29 +200,13 @@ export default function Home() {
         .vj-memo-link { margin-top: 24px; font-size: 11px; color: rgba(255,255,255,0.15); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-memo-link:hover { color: rgba(139,92,246,0.6); }
 
-        .vj-result { margin-top: 52px; width: 100%; animation: vj-emerge 0.8s cubic-bezier(0.16,1,0.3,1) forwards; }
-        @keyframes vj-emerge { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        .vj-result { margin-top: 52px; width: 100%; display: flex; flex-direction: column; align-items: center; animation: vj-emerge 1.2s cubic-bezier(0.16,1,0.3,1) forwards; }
+        @keyframes vj-emerge { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 
-        .vj-divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 16px 0; }
+        .vj-afterword { font-family: 'Zen Old Mincho', serif; font-size: 16px; font-weight: 400; color: rgba(255,255,255,0.55); line-height: 2; letter-spacing: 0.08em; text-align: center; margin: 0 0 36px 0; }
 
-        .vj-summary-section { margin-bottom: 16px; }
-        .vj-summary-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        .vj-summary-label { font-size: 10px; color: rgba(255,255,255,0.25); letter-spacing: 0.2em; font-family: 'Zen Old Mincho', serif; }
-        .vj-summary-edit-btn { font-size: 10px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.08em; font-family: 'Noto Sans JP', sans-serif; transition: color 0.2s; padding: 0; }
-        .vj-summary-edit-btn:hover { color: rgba(139,92,246,0.9); }
-        .vj-summary-text { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.8; letter-spacing: 0.03em; margin: 0; }
-        .vj-summary-textarea { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.25); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: rgba(255,255,255,0.8); outline: none; resize: none; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.03em; line-height: 1.7; box-sizing: border-box; transition: border-color 0.2s; }
-        .vj-summary-textarea:focus { border-color: rgba(139,92,246,0.5); }
-        .vj-summary-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 6px; }
-        .vj-summary-save { font-size: 11px; color: rgba(167,139,250,0.9); background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 8px; padding: 6px 14px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; transition: all 0.2s; }
-        .vj-summary-save:hover { background: rgba(139,92,246,0.18); }
-        .vj-summary-save:disabled { opacity: 0.4; cursor: not-allowed; }
-        .vj-summary-cancel { font-size: 11px; color: rgba(255,255,255,0.2); background: none; border: none; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; transition: color 0.2s; padding: 6px 8px; }
-        .vj-summary-cancel:hover { color: rgba(255,255,255,0.4); }
-        .vj-summary-saved { font-size: 10px; color: rgba(139,92,246,0.6); letter-spacing: 0.08em; animation: vj-emerge 0.3s ease; }
-
-        .vj-logs-link { display: inline-block; margin-top: 20px; font-size: 12px; color: rgba(139,92,246,0.45); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
-        .vj-logs-link:hover { color: rgba(139,92,246,0.9); }
+        .vj-logs-link { font-size: 11px; color: rgba(139,92,246,0.35); background: none; border: none; cursor: pointer; letter-spacing: 0.12em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
+        .vj-logs-link:hover { color: rgba(139,92,246,0.7); }
 
         .vj-nav { position: fixed; top: 22px; right: 22px; z-index: 20; display: flex; gap: 8px; }
         .vj-nav-btn { font-size: 11px; color: rgba(255,255,255,0.18); background: none; border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; padding: 7px 18px; cursor: pointer; letter-spacing: 0.1em; transition: all 0.2s; font-family: 'Noto Sans JP', sans-serif; }
@@ -270,7 +232,7 @@ export default function Home() {
               {new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
             </p>
             <h1 className="vj-title">
-              {isRecording ? <>話してね<br />聴いてるよ</> : isSilence ? <span style={{ visibility: "hidden" }}>　</span> : <>今の気持ちを<br />話してみて</>}
+              {isRecording ? <>話してね<br />聴いてるよ</> : isSilence ? <span style={{ visibility: "hidden" }}>　</span> : result ? <></> : <>今の気持ちを<br />話してみて</>}
             </h1>
             {!isRecording && !isSilence && !isAnalyzing && !result && (
               <p className="vj-hint">ボタンを押すだけで話せるよ</p>
@@ -278,7 +240,7 @@ export default function Home() {
           </div>
 
           <div className="vj-btn-wrap">
-            {!isRecording && !isSilence && !isAnalyzing && (
+            {!isRecording && !isSilence && !isAnalyzing && !result && (
               <>
                 <div className="vj-breath-ring vj-breath-ring-1" />
                 <div className="vj-breath-ring vj-breath-ring-2" />
@@ -292,22 +254,24 @@ export default function Home() {
                 <div className="vj-rec-ring vj-rec-ring-3" />
               </>
             )}
-            <button
-              className={`vj-btn ${isSilence ? "vj-btn-silence" : isRecording ? "vj-btn-recording" : isAnalyzing ? "vj-btn-analyzing" : "vj-btn-idle"}`}
-              onClick={isRecording ? stopRecording : !isSilence && !isAnalyzing ? startRecording : undefined}
-              disabled={isSilence || isAnalyzing}
-            >
-              {isAnalyzing ? (
-                <div className="vj-dots">
-                  <div className="vj-dot" /><div className="vj-dot" /><div className="vj-dot" />
-                </div>
-              ) : isSilence ? null : (
-                <>
-                  <span className="vj-btn-icon">{isRecording ? "■" : "●"}</span>
-                  <span className="vj-btn-label">{isRecording ? "やめる" : "話す"}</span>
-                </>
-              )}
-            </button>
+            {!result && (
+              <button
+                className={`vj-btn ${isSilence ? "vj-btn-silence" : isRecording ? "vj-btn-recording" : isAnalyzing ? "vj-btn-analyzing" : "vj-btn-idle"}`}
+                onClick={isRecording ? stopRecording : !isSilence && !isAnalyzing ? startRecording : undefined}
+                disabled={isSilence || isAnalyzing}
+              >
+                {isAnalyzing ? (
+                  <div className="vj-dots">
+                    <div className="vj-dot" /><div className="vj-dot" /><div className="vj-dot" />
+                  </div>
+                ) : isSilence ? null : (
+                  <>
+                    <span className="vj-btn-icon">{isRecording ? "■" : "●"}</span>
+                    <span className="vj-btn-label">{isRecording ? "やめる" : "話す"}</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           {!isRecording && !isSilence && !isAnalyzing && !result && (
@@ -318,39 +282,9 @@ export default function Home() {
 
           {result && (
             <div className="vj-result">
-              {(result.summary || isEditingSummary) && (
-                <div className="vj-summary-section">
-                  <div className="vj-summary-header">
-                    <span className="vj-summary-label">話した内容</span>
-                    {!isEditingSummary && (
-                      <button className="vj-summary-edit-btn" onClick={() => { setIsEditingSummary(true); setEditSummary(result.summary); }}>
-                        修正する
-                      </button>
-                    )}
-                  </div>
-                  {isEditingSummary ? (
-                    <>
-                      <textarea
-                        className="vj-summary-textarea"
-                        rows={3}
-                        value={editSummary}
-                        onChange={(e) => setEditSummary(e.target.value)}
-                      />
-                      <div className="vj-summary-footer">
-                        {summarySaved && <span className="vj-summary-saved">更新したよ</span>}
-                        <button className="vj-summary-cancel" onClick={() => { setIsEditingSummary(false); setEditSummary(result.summary); }}>キャンセル</button>
-                        <button className="vj-summary-save" onClick={handleSaveSummary} disabled={isSavingSummary}>
-                          {isSavingSummary ? "保存中..." : "この内容で保存"}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="vj-summary-text">{result.summary}</p>
-                  )}
-                </div>
-              )}
+              <p className="vj-afterword">{result.afterword}</p>
               <button className="vj-logs-link" onClick={() => router.push("/logs")}>
-                過去のきろくを見る →
+                きろくを見る →
               </button>
             </div>
           )}
