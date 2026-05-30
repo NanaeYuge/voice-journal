@@ -26,7 +26,11 @@ export default function LoginPage() {
     }
     setLoading(true);
     if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { app_name: 'YORU' } },
+        });
         if (error) {
             setMessage(error.message);
         } else if (data.user && data.user.identities?.length === 0) {
