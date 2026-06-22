@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -17,6 +17,17 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  // 確認メールのリンク（?code=）で着地したとき、detectSessionInUrl が
+  // 自動でセッション交換を行う。SIGNED_IN を検知してホームへ遷移させる。
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        router.push("/");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [router, supabase]);
+
   const allConsented = consentAll;
 
   const handleSubmit = async () => {
@@ -29,7 +40,14 @@ export default function LoginPage() {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { app_name: 'YORU' } },
+          options: {
+            data: { app_name: 'YORU' },
+            // KASANEと共有するSupabaseのSite Url（kasane.yururi.app）に着地しないよう、
+            // YORU発の確認メールはYORU側で受ける。
+            // 着地後は detectSessionInUrl により ?code= が自動でセッション交換され、
+            // 下の onAuthStateChange(SIGNED_IN) で / へ遷移する。
+            emailRedirectTo: 'https://yoru.yururi.app/login',
+          },
         });
         if (error) {
             setMessage(error.message);
