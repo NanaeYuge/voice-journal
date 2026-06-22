@@ -145,6 +145,14 @@ setMessage("確認メールを送りました。メールをチェックして�
           color: rgba(255,255,255,0.7);
           letter-spacing: 0.04em;
         }
+        .login-sub {
+          margin-top: 10px;
+          font-size: 12px;
+          font-weight: 300;
+          color: rgba(255,255,255,0.4);
+          letter-spacing: 0.08em;
+          line-height: 1.7;
+        }
 
         .login-input {
           display: block;
@@ -274,6 +282,7 @@ setMessage("確認メールを送りました。メールをチェックして�
             <span className="login-moon">🌙</span>
             <span className="login-brand">YORU</span>
             <h1 className="login-greeting">{isSignUp ? "はじめよう" : "おかえり"}</h1>
+            <p className="login-sub">今日の自分を、声で残してみる</p>
           </div>
 
           <input
