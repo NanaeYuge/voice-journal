@@ -1,7 +1,15 @@
 import { createBrowserClient } from "@supabase/ssr";
 
+function isSharedDomainHost(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.location.hostname.endsWith("yururi.app")
+  );
+}
+
 function clearLegacyHostOnlyAuthCookies() {
   if (typeof document === "undefined") return;
+  if (!isSharedDomainHost()) return;
   const names = document.cookie
     .split("; ")
     .map((c) => c.split("=")[0])
@@ -13,11 +21,10 @@ function clearLegacyHostOnlyAuthCookies() {
 
 export function createClient() {
   clearLegacyHostOnlyAuthCookies();
+  const domain = isSharedDomainHost() ? ".yururi.app" : undefined;
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookieOptions: { domain: ".yururi.app" },
-    }
+    domain ? { cookieOptions: { domain } } : undefined
   );
 }
