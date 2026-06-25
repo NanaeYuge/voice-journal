@@ -275,6 +275,14 @@ setMessage("確認メールを送りました。メールをチェックして�
           transition: color 0.2s;
         }
         .login-toggle:hover { color: rgba(139,92,246,0.65); }
+        .login-note {
+          margin-top: 20px;
+          text-align: center;
+          font-size: 11px;
+          font-weight: 300;
+          color: rgba(255,255,255,0.3);
+          letter-spacing: 0.06em;
+        }
       `}</style>
 
       <div className="login-root">
@@ -341,6 +349,7 @@ setMessage("確認メールを送りました。メールをチェックして�
           <p className="login-toggle" onClick={() => { setIsSignUp(!isSignUp); setMessage(""); }}>
             {isSignUp ? "すでにアカウントがある → ログイン" : "はじめての方 → アカウントを作る"}
           </p>
+          <p className="login-note">KASANEと共通IDです</p>
         </div>
       </div>
     </>
