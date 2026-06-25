@@ -221,7 +221,7 @@ export default function Home() {
 
         <nav className="vj-nav">
           <button className="vj-nav-btn" onClick={() => router.push("/logs")}>きろく</button>
-          <button className="vj-nav-btn" onClick={() => router.push("/settings")}>設定</button>
+          <button className="vj-nav-btn" onClick={() => router.push("/menu")}>設定</button>
         </nav>
 
         <div className="vj-content">
