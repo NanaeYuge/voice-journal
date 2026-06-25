@@ -130,26 +130,30 @@ setMessage("確認メールを送りました。メールをチェックして�
         }
 
         .login-top { text-align: center; margin-bottom: 36px; }
-        .login-moon { font-size: 28px; margin-bottom: 12px; display: block; }
+        .login-logorow { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 14px 0 0; }
+        .login-moon { font-size: 28px; line-height: 1; }
         .login-brand {
           font-family: 'Zen Old Mincho', serif;
-          font-size: 11px;
-          letter-spacing: 0.35em;
-          color: rgba(139,92,246,0.45);
-          display: block;
-          margin-bottom: 20px;
+          font-size: 44px;
+          font-weight: 600;
+          letter-spacing: 0.1em;
+          color: #e8d5a0;
+          line-height: 1;
+          text-shadow: 0 0 24px rgba(232,213,160,0.08);
         }
         .login-greeting {
-          font-size: 19px;
-          font-weight: 300;
-          color: rgba(255,255,255,0.7);
-          letter-spacing: 0.04em;
+          font-family: 'Zen Old Mincho', serif;
+          font-size: 20px;
+          font-weight: 400;
+          color: rgba(255,255,255,0.85);
+          letter-spacing: 0.1em;
+          margin: 0;
         }
         .login-sub {
-          margin-top: 10px;
+          margin-top: 14px;
           font-size: 12px;
           font-weight: 300;
-          color: rgba(255,255,255,0.4);
+          color: rgba(255,255,255,0.45);
           letter-spacing: 0.08em;
           line-height: 1.7;
         }
@@ -279,9 +283,10 @@ setMessage("確認メールを送りました。メールをチェックして�
 
         <div className="login-card">
           <div className="login-top">
-            <span className="login-moon">🌙</span>
-            <span className="login-brand">YORU</span>
-            <h1 className="login-greeting">{isSignUp ? "はじめよう" : "おかえり"}</h1>
+            <h1 className="login-greeting">心を整理する</h1>
+            <div className="login-logorow">
+              <span className="login-brand">YORU</span>
+            </div>
             <p className="login-sub">今日の自分を、声で残してみる</p>
           </div>
 
