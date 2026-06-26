@@ -28,6 +28,10 @@ const allowedEmotions = [
 type Trigger = (typeof allowedTriggers)[number];
 type Emotion = (typeof allowedEmotions)[number];
 
+export type Signal = { type: string; label: string; raw: string; confidence: number };
+export type CycleHint = Signal & { basis: "explicit" | "indirect"; evidence: string[] };
+export type Signals = { body: Signal[]; emotion: Signal[]; rhythm: Signal[]; cycle_hint: CycleHint[] };
+
 export type EmotionAnalysis = {
   emotion: Emotion;
   trigger: Trigger;
@@ -35,6 +39,7 @@ export type EmotionAnalysis = {
   nuance: string;
   summary: string;
   insight: string;
+  signals: Signals | null;
 };
 
 type WeeklyJournalInput = {
@@ -84,6 +89,47 @@ function safeJsonParse(raw: string): Record<string, unknown> {
   }
 }
 
+function clampConfidence(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+
+function sanitizeSignal(item: unknown): Signal | null {
+  if (!item || typeof item !== "object") return null;
+  const o = item as Record<string, unknown>;
+  const type = sanitizeText(o.type).slice(0, 40);
+  const label = sanitizeText(o.label).slice(0, 40);
+  const raw = sanitizeText(o.raw).slice(0, 100);
+  if (!type && !label && !raw) return null;
+  return { type, label, raw, confidence: clampConfidence(o.confidence) };
+}
+
+function sanitizeCycleHint(item: unknown): CycleHint | null {
+  const base = sanitizeSignal(item);
+  if (!base) return null;
+  const o = item as Record<string, unknown>;
+  const basis: "explicit" | "indirect" = o.basis === "explicit" ? "explicit" : "indirect";
+  const evidence = Array.isArray(o.evidence)
+    ? o.evidence.map((e) => sanitizeText(e).slice(0, 60)).filter(Boolean).slice(0, 10)
+    : [];
+  // 厳格ルールの安全弁：indirect は confidence を 0.4 以下に丸める
+  const confidence = basis === "indirect" ? Math.min(base.confidence, 0.4) : base.confidence;
+  return { ...base, confidence, basis, evidence };
+}
+
+function sanitizeSignals(value: unknown): Signals | null {
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  const list = (v: unknown) => (Array.isArray(v) ? v : []);
+  return {
+    body: list(o.body).map(sanitizeSignal).filter((s): s is Signal => s !== null),
+    emotion: list(o.emotion).map(sanitizeSignal).filter((s): s is Signal => s !== null),
+    rhythm: list(o.rhythm).map(sanitizeSignal).filter((s): s is Signal => s !== null),
+    cycle_hint: list(o.cycle_hint).map(sanitizeCycleHint).filter((s): s is CycleHint => s !== null),
+  };
+}
+
 function fallbackEmotionAnalysis(): EmotionAnalysis {
   return {
     emotion: "穏やか",
@@ -92,6 +138,7 @@ function fallbackEmotionAnalysis(): EmotionAnalysis {
     nuance: "",
     summary: "",
     insight: "",
+    signals: null,
   };
 }
 
@@ -134,7 +181,7 @@ export async function analyzeEmotion(
 出力は必ずJSONオブジェクトのみ。前置き・説明・マークダウン・コードブロックは禁止。
 
 返却形式:
-{"emotion":"...","trigger":"...","nuance":"...","summary":"...","insight":"..."}
+{"emotion":"...","trigger":"...","nuance":"...","summary":"...","insight":"...","signals":{...}}
 
 # emotion（内部集計用・UIには表示しない）
 次のいずれか1つ:
@@ -185,8 +232,39 @@ export async function analyzeEmotion(
 - 「〜かもしれない」「〜という傾向がある」のトーン
 - 共感・励まし・アドバイスは禁止
 
-必ずこの5つのキーを含めて返してください:
-emotion, trigger, nuance, summary, insight`,
+# signals（内部保存用・UIには表示しない・第2層データ）
+録音の文字起こしから、実際に言及された手がかりだけを抽出する。
+無いものは空配列にする。埋めようとしない・捏造しない。
+
+4軸（すべてのキーを必ず含める。該当なしは []）:
+- body：身体感覚（空腹・疲れ・眠気・痛み・むくみ 等）
+- emotion：感情（不安・イライラ・穏やか 等）
+- rhythm：生活リズム（睡眠不足・食事・活動量 等）
+- cycle_hint：生理周期の手がかり
+
+各項目の形:
+{ "type": 英小文字スネークの識別子, "label": 日本語表示名, "raw": 元の言い回しそのまま, "confidence": 0〜1 }
+- type 例: "hunger","fatigue","anxiety","sleep_deprivation","possible_pms"
+- confidence：明示的な言及は高め、間接的な推測は低め
+
+cycle_hint のみ、上記に加えて:
+- "basis": "explicit" または "indirect"
+- "evidence": 文字列の配列
+
+## cycle_hint の厳格ルール（最重要）
+- 「生理」「PMS」「排卵」等が明示的に言及された時のみ basis:"explicit"・confidence 0.9以上・事実として記録
+- イライラ/眠気/食欲/むくみ/肌荒れ/胸の張り/涙もろい/腰痛/下腹部痛 等から間接的に推測する場合は必ず basis:"indirect"・confidence 0.4以下。断定しない
+- 周期かどうかの判断（「周期的」等）はしない。1録音だけでは分からない。手がかりを記録するだけ
+
+## signals の例
+explicit例：「生理が始まった」
+"signals":{"body":[],"emotion":[],"rhythm":[],"cycle_hint":[{"type":"period","label":"生理","raw":"生理が始まった","confidence":0.95,"basis":"explicit","evidence":["menstruation"]}]}
+
+indirect例：「なんかイライラするし甘いもの食べたい」
+"signals":{"body":[{"type":"craving","label":"甘いものが欲しい","raw":"甘いもの食べたい","confidence":0.6}],"emotion":[{"type":"irritability","label":"イライラ","raw":"なんかイライラする","confidence":0.6}],"rhythm":[],"cycle_hint":[{"type":"possible_pms","label":"PMSの可能性","raw":"イライラするし甘いもの食べたい","confidence":0.3,"basis":"indirect","evidence":["irritability","craving"]}]}
+
+必ずこの6つのキーを含めて返してください:
+emotion, trigger, nuance, summary, insight, signals`,
         },
         {
           role: "user",
@@ -205,8 +283,9 @@ emotion, trigger, nuance, summary, insight`,
     const nuance = sanitizeNuance(parsed.nuance);
     const summary = sanitizeSummary(parsed.summary);
     const insight = sanitizeText(parsed.insight).slice(0, 100);
+    const signals = sanitizeSignals(parsed.signals);
 
-    return { emotion, trigger, message: "", nuance, summary, insight };
+    return { emotion, trigger, message: "", nuance, summary, insight, signals };
   } catch (error) {
     console.error("[analyzeEmotion] ERROR:", error);
     return fallbackEmotionAnalysis();

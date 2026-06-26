@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       nuance: result.nuance,
       summary: result.summary,
       insight: result.insight,
+      signals: result.signals,
       message: "",
     });
   } catch (e: unknown) {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
         nuance: "",
         summary: "",
         insight: "",
+        signals: null,
         message: "",
       },
       { status: 500 }

@@ -4,6 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import { createClient } from "./lib/supabase";
 import { useRouter } from "next/navigation";
 
+type SignalItem = { type: string; label: string; raw: string; confidence: number };
+type CycleHintItem = SignalItem & { basis: "explicit" | "indirect"; evidence: string[] };
+type SignalsData = { body: SignalItem[]; emotion: SignalItem[]; rhythm: SignalItem[]; cycle_hint: CycleHintItem[] };
+
 type AnalyzeResponse = {
   transcript?: string;
   emotion?: string;
@@ -12,6 +16,7 @@ type AnalyzeResponse = {
   nuance?: string;
   summary?: string;
   insight?: string;
+  signals?: SignalsData | null;
   error?: string;
 };
 
@@ -133,6 +138,7 @@ export default function Home() {
           message: "",
           summary: safeSummary,
           insight: safeInsight,
+          signals: data.signals ?? null,
         });
 
       const afterword = getAfterword(safeTranscript.length);
