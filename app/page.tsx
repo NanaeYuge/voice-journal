@@ -164,9 +164,9 @@ export default function Home() {
         .vj-content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 380px; }
 
         .vj-header { text-align: center; margin-bottom: 72px; }
-        .vj-label { font-family: 'Zen Old Mincho', serif; font-size: 11px; font-weight: 400; letter-spacing: 0.4em; color: rgba(167,139,250,0.45); margin: 0 0 22px 0; }
-        .vj-title { font-size: 21px; font-weight: 300; color: rgba(255,255,255,0.78); margin: 0; line-height: 1.7; letter-spacing: 0.03em; }
-        .vj-hint { margin-top: 12px; font-size: 12px; color: rgba(255,255,255,0.2); letter-spacing: 0.08em; }
+        .vj-label { font-family: 'Zen Old Mincho', serif; font-size: 44px; font-weight: 600; letter-spacing: 0.1em; color: #e8d5a0; text-shadow: 0 0 24px rgba(232,213,160,0.1); margin: 0 0 22px 0; }
+        .vj-title { font-size: 21px; font-weight: 300; color: rgba(255,255,255,0.9); margin: 0; line-height: 1.7; letter-spacing: 0.03em; }
+        .vj-hint { margin-top: 12px; font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.08em; }
 
         .vj-btn-wrap { position: relative; width: 240px; height: 240px; display: flex; align-items: center; justify-content: center; }
         .vj-breath-ring { position: absolute; border-radius: 50%; animation: vj-breath 3.5s ease-in-out infinite; pointer-events: none; }
@@ -197,8 +197,9 @@ export default function Home() {
         .vj-dot:nth-child(3) { animation-delay: 0.5s; }
         @keyframes vj-dot-float { 0%,100%{transform:translateY(0);opacity:0.4} 50%{transform:translateY(-5px);opacity:1} }
 
-        .vj-memo-link { margin-top: 24px; font-size: 11px; color: rgba(255,255,255,0.15); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
+        .vj-memo-link { margin-top: 24px; font-size: 11px; color: rgba(255,255,255,0.5); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
         .vj-memo-link:hover { color: rgba(139,92,246,0.6); }
+        .vj-memo-link .vj-memo-accent { color: rgba(167,139,250,0.9); text-decoration: underline; text-underline-offset: 3px; }
 
         .vj-result { display: flex; flex-direction: column; align-items: center; animation: vj-emerge 1.2s cubic-bezier(0.16,1,0.3,1) forwards; text-align: center; }
         @keyframes vj-emerge { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
@@ -209,8 +210,8 @@ export default function Home() {
         .vj-logs-link:hover { color: rgba(139,92,246,0.7); }
 
         .vj-nav { position: fixed; top: 22px; right: 22px; z-index: 20; display: flex; gap: 8px; }
-        .vj-nav-btn { font-size: 11px; color: rgba(255,255,255,0.18); background: none; border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; padding: 7px 18px; cursor: pointer; letter-spacing: 0.1em; transition: all 0.2s; font-family: 'Noto Sans JP', sans-serif; }
-        .vj-nav-btn:hover { color: rgba(255,255,255,0.45); border-color: rgba(255,255,255,0.12); }
+        .vj-nav-btn { font-size: 11px; color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.22); border-radius: 20px; padding: 7px 18px; cursor: pointer; letter-spacing: 0.1em; transition: all 0.2s; font-family: 'Noto Sans JP', sans-serif; }
+        .vj-nav-btn:hover { color: rgba(255,255,255,0.95); border-color: rgba(255,255,255,0.35); background: rgba(255,255,255,0.1); }
 
       `}</style>
 
@@ -227,7 +228,7 @@ export default function Home() {
         <div className="vj-content">
           <div className="vj-header">
             <p className="vj-label">YORU</p>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.12em", margin: "0 0 18px 0" }}>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", letterSpacing: "0.12em", margin: "0 0 18px 0" }}>
               {new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
             </p>
             <h1 className="vj-title">
@@ -283,7 +284,7 @@ export default function Home() {
 
           {!isRecording && !isSilence && !isAnalyzing && !result && (
             <button className="vj-memo-link" onClick={() => router.push("/memo")}>
-              今は話せない？ → メモだけ残す
+              今は話せない？ <span className="vj-memo-accent">→ メモだけ残す</span>
             </button>
           )}
 
