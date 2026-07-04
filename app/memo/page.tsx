@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "../lib/supabase";
+import { readJson } from "../lib/http";
 import { useRouter } from "next/navigation";
 
 export default function MemoPage() {
@@ -24,7 +25,7 @@ export default function MemoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: memo }),
       });
-      const data = await res.json();
+      const data = (await readJson<{ emotion?: string; nuance?: string; trigger?: string }>(res)) ?? {};
 
       await supabase.from("journals").insert({
         user_id: user.id,

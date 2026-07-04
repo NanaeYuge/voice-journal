@@ -1,9 +1,17 @@
 console.log("[ai.ts] loaded version 2026-04-22-1");
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// 遅延初期化。OPENAI_API_KEY が無くてもモジュールロードは落とさない。
+// （落とすと route が JSON ではなく Next の HTML 500 を返し、ブラウザの
+//  res.json() が SyntaxError になる。鍵が無い場合は各関数の try/catch 内で
+//  ここが throw し、route が JSON のエラーを返せるようにする＝案A。）
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
+}
 
 const allowedTriggers = [
   "人間関係",
@@ -145,7 +153,7 @@ function fallbackEmotionAnalysis(): EmotionAnalysis {
 export async function transcribeAudio(file: File): Promise<string> {
   console.log("[transcribeAudio] start");
   try {
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await getOpenAI().audio.transcriptions.create({
       file,
       model: "whisper-1",
       language: "ja",
@@ -171,7 +179,7 @@ export async function analyzeEmotion(
   }
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
       messages: [
@@ -298,6 +306,168 @@ const sensitiveKeywords = [
   "レイプ", "性的", "行方不明", "誘拐", "失踪", "事故死", "突然死",
 ];
 
+// ===== 内省対話ループ（YORU） =====
+
+export type ReflectionRole = "user" | "yoru";
+export type ReflectionTurn = { role: ReflectionRole; content: string };
+export type ReflectionState = "continue" | "close";
+export type ReflectionResult = {
+  reply: string;
+  state: ReflectionState;
+  crisis: boolean;
+};
+
+// YORU の人格・振る舞い。システムプロンプトとして使用する。
+const YORU_SYSTEM_PROMPT = `# YORU
+## 役割
+あなたは「YORU」。一日の終わりに、ユーザーが自分自身と対話しながら
+内省を深められるよう導く聞き手。
+目的は、答えを教えることでも、話を整理してあげることでもない。
+ユーザー自身が「整理できる状態」になるのを助けること。
+主役は常にユーザーの内省。あなたは隣に座って、問いを一つ差し出すだけ。
+
+## やること
+- ユーザーの言葉を軽く受け止め、直前に本人が言ったことの中から、
+  次の問いを一つ返す。
+- 受け止めは1〜2文。話を全部なぞらず、一番芯だと感じた一点だけ拾う。
+- そのあと、問いを一つだけ返す。一度に複数は投げない。
+
+## やらないこと
+- 解釈・結論づけをしない。「つまり〜ということだね」「あなたは〜な人だね」と
+  まとめて返さない。まとめた瞬間、ボールがあなたに移り、本人の内省が止まる。
+- 正解を探させる問いにしない。誘導や、正しさのジャッジをしない。
+  ここは正しさを決める場所ではない。
+- アドバイス・提案をしない。「〜したら？」は言わない。
+- 長く話さない。基本は短く。あなたが喋るほど、本人の考える余白が消える。
+
+## 会話の流れ（弧）
+1. 入り口：軽い問いから始める。例「今日、どんな一日だった？」
+2. 深掘り：本人の答えの中の言葉を拾って、一歩だけ内側へ問いを返す。
+   繰り返してよいが、最大3問まで。
+3. 締めの判断：本人が「願い・本音・大事にしていること」を口にしたら、
+   それが"芯"。芯が出たと感じたら、それ以上掘らず締めに向かう。
+   （3問使い切る前でも、芯が出たら締めてよい）
+4. 締めの問い：本人が芯にたどり着いたら、その内容を労う方向で、
+   相手の状況に合わせて問いを立てる。締めの問いは固定しない。
+   （例：日々の悩みなら「今の自分にどんな言葉をかけたい？」、
+    弔いなら「どんなふうにありがとうを伝えたい？」など）
+   - ここで本人が自分を責める言葉を返してきたら、そのまま肯定しない。
+     一度受け止めてから、やさしい言い換えをそっと添える。
+5. 閉じ：本人を労って静かに終える。答えを出し切らせない。
+   内省は答えを出す場ではなく、少し形にする場。
+
+## 締めの言葉について
+- 「ゆっくり休んで」「がんばらなくて大丈夫」などの一般的なねぎらいで
+  締めない。誰にでも言える言葉は中身が空に感じられ、
+  「聞いてもらえた」という信頼が生まれない。
+- 締めには、今日そのユーザーが実際に話した具体的な言葉・行動を一つ拾って
+  織り込み、その人だけに宛てた一言にする。毎回ちがう締めになるのが正しい。
+
+## トーン
+やさしく、静かで、夜に合う落ち着いた口調。評価しない、急かさない。
+沈黙を怖がらず、余白を残す。
+
+## 安全について
+死にたい・消えたい・自分や誰かを傷つけたい等の危機のサインが出たら、
+深掘りは止める。まず気持ちを受け止め、一人で抱えないでほしいこと、
+信頼できる人や専門の窓口に頼っていいことをやさしく伝える。
+無理に話を続けさせない。
+
+## 出力形式
+返答は必ず次のJSON形式で返す：
+{"reply": "ユーザーに表示する受け止め＋問い（または締めの言葉）", "state": "continue または close", "crisis": false}
+- まだ深掘りを続ける場合は state を "continue" にする。
+- 芯が出た、または締めに入る場合は state を "close" にする。
+- 危機のサイン（死にたい・消えたい・自傷他害など）を検知した場合は
+  crisis を true にし、深掘りを止めて state を "close" にする。
+  それ以外は crisis を false にする。
+- reply には JSON以外の余計な文字を含めない。`;
+
+// 対話ループのモデル切り替えはここ1箇所。芯が出たときの close 判定の質を検証中。
+// 通常は "gpt-4o-mini"。締め判定の検証のため一時的に "gpt-4o" に上げている。
+const REFLECTION_MODEL = "gpt-4o";
+
+function sanitizeReplyText(value: unknown): string {
+  return sanitizeText(value).slice(0, 400);
+}
+
+// 器側の危機フッター表示と併用するため、危機語の簡易バックアップ検知も行う。
+const crisisKeywords = [
+  "死にたい", "消えたい", "いなくなりたい", "自殺", "自傷",
+  "リストカット", "死のう", "殺したい", "殺す", "消えてしまいたい",
+];
+
+function detectCrisisFromMessages(messages: ReflectionTurn[]): boolean {
+  return messages.some(
+    (m) => m.role === "user" && crisisKeywords.some((kw) => m.content.includes(kw))
+  );
+}
+
+// 会話履歴（発話者つき）を渡して、YORUの次の返答＋状態を生成する。
+// LLMは状態を持たないため、messages全体が文脈の役割を担う。
+export async function continueReflection(
+  messages: ReflectionTurn[]
+): Promise<ReflectionResult> {
+  console.log("[continueReflection] start turns=", messages.length);
+
+  const cleaned = messages
+    .map((m) => ({ role: m.role, content: sanitizeText(m.content) }))
+    .filter((m) => m.content.length > 0);
+
+  const keywordCrisis = detectCrisisFromMessages(cleaned);
+
+  if (cleaned.length === 0) {
+    return {
+      reply: "今日、どんな一日だった？",
+      state: "continue",
+      crisis: false,
+    };
+  }
+
+  try {
+    const completion = await getOpenAI().chat.completions.create({
+      model: REFLECTION_MODEL,
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: YORU_SYSTEM_PROMPT },
+        ...cleaned.map((m) => ({
+          role: (m.role === "yoru" ? "assistant" : "user") as "assistant" | "user",
+          content: m.content,
+        })),
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    console.log("[continueReflection] raw:", raw);
+    const parsed = safeJsonParse(raw);
+
+    const reply = sanitizeReplyText(parsed.reply);
+    const state: ReflectionState = parsed.state === "close" ? "close" : "continue";
+    const crisis = parsed.crisis === true || keywordCrisis;
+
+    if (!reply) {
+      // 本文が空なら安全側に倒して静かに締める
+      return {
+        reply: "今日はここまで話してくれて、ありがとう。ちゃんと受け取ったよ。",
+        state: "close",
+        crisis,
+      };
+    }
+
+    // 危機検知時は必ず締めに倒す（プロンプト任せの取りこぼし対策）
+    return { reply, state: crisis ? "close" : state, crisis };
+  } catch (error) {
+    console.error("[continueReflection] ERROR:", error);
+    // 通信/生成失敗時は静かに締める（ループで詰まらせない）
+    return {
+      reply: "うまく言葉を返せなかったみたい。でも、話してくれたことはちゃんとここにあるよ。",
+      state: "close",
+      crisis: keywordCrisis,
+    };
+  }
+}
+
 export async function generateWeeklySummary(
   journals: WeeklyJournalInput[],
   period: number
@@ -336,7 +506,7 @@ export async function generateWeeklySummary(
     .join("\n");
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.5,
       max_tokens: 300,
