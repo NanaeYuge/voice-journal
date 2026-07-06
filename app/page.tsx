@@ -27,6 +27,7 @@ export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [crisis, setCrisis] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -111,6 +112,7 @@ export default function Home() {
   const submitUserTurn = async (rawText: string) => {
     const text = rawText.trim();
     if (!text || isThinking) return;
+    setMicError(null);
 
     setTextInput("");
     const userMsg: Message = { role: "user", content: text };
@@ -166,6 +168,12 @@ export default function Home() {
 
   // ---- 録音（入口・各ターン共通） ----
   const startRecording = async () => {
+    setMicError(null);
+    // マイクが使えない環境（非セキュアコンテキスト / mediaDevices 非対応）を先に弾く
+    if (typeof window === "undefined" || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setMicError("この画面ではマイクが使えないみたい。https か localhost で開いてね。");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -182,8 +190,17 @@ export default function Home() {
       };
       mediaRecorder.start();
       setIsRecording(true);
-    } catch {
+    } catch (e) {
       setIsRecording(false);
+      const name = (e as { name?: string })?.name || "";
+      console.error("[startRecording] getUserMedia failed:", name, e);
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setMicError("マイクの使用が許可されていないみたい。ブラウザの設定でマイクを許可してから、もう一度話しかけてね。");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setMicError("マイクが見つからなかったよ。つながっているか確かめて、もう一度試してね。");
+      } else {
+        setMicError("うまくマイクを準備できなかったみたい。もう一度試すか、テキストで話してね。");
+      }
     }
   };
 
@@ -268,6 +285,7 @@ export default function Home() {
         @keyframes vj-dot-float { 0%,100%{transform:translateY(0);opacity:0.4} 50%{transform:translateY(-5px);opacity:1} }
 
         .vj-entry-hint { margin-top: 26px; font-size: 12px; color: rgba(255,255,255,0.5); letter-spacing: 0.08em; }
+        .vj-mic-error { margin-top: 14px; max-width: 320px; font-size: 12px; line-height: 1.7; color: rgba(244,180,150,0.9); letter-spacing: 0.03em; text-align: center; }
         .vj-or { margin: 22px 0 14px; font-size: 11px; color: rgba(255,255,255,0.28); letter-spacing: 0.2em; }
         .vj-entry-textwrap { width: 100%; max-width: 340px; }
         .vj-memo-link { margin-top: 28px; font-size: 11px; color: rgba(255,255,255,0.5); background: none; border: none; cursor: pointer; letter-spacing: 0.1em; transition: color 0.2s; font-family: 'Noto Sans JP', sans-serif; }
@@ -368,6 +386,7 @@ export default function Home() {
               <p className="vj-entry-hint">
                 {isRecording ? "聴いてるよ" : isTranscribing ? "よみとってるよ..." : "ボタンを押して話しかけてね"}
               </p>
+              {micError && <p className="vj-mic-error">{micError}</p>}
 
               <p className="vj-or">または</p>
               <div className="vj-entry-textwrap">
@@ -441,6 +460,7 @@ export default function Home() {
               {phase === "chat" && (
                 <>
                   {isTranscribing && <p className="vj-input-status">よみとってるよ...</p>}
+                  {micError && <p className="vj-mic-error">{micError}</p>}
                   <div className="vj-inputbar">
                     <textarea
                       className="vj-textarea"
