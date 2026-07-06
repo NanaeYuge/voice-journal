@@ -13,6 +13,19 @@ type ChatResponse = { reply: string; state: "continue" | "close"; crisis?: boole
 // （プロンプトが延々 continue を返す事故の保険。深掘り最大3問はプロンプト側で担保）
 const MAX_USER_TURNS = 6;
 
+// [3] 声の録音が実質無音/短すぎるかの判定用（幻聴対策）。値はチューニング前提。
+const MIN_RECORDING_MS = 800;
+const MIN_BLOB_BYTES = 1600;
+// 無音時に Whisper が返しがちな定番フレーズ。ほぼこの語だけの短い出力のみ破棄する（保守的）。
+const HALLUCINATION_PHRASES = [
+  "ご視聴ありがとうございました", "ご視聴ありがとうございます",
+  "チャンネル登録お願いします", "最後までご視聴いただきありがとうございました",
+];
+function isLikelyHallucination(text: string): boolean {
+  const t = text.trim();
+  return HALLUCINATION_PHRASES.some((p) => t === p || (t.length <= p.length + 4 && t.includes(p)));
+}
+
 function buildTranscript(messages: Message[]): string {
   return messages
     .map((m) => `${m.role === "user" ? "あなた" : "YORU"}：${m.content}`)
@@ -28,6 +41,9 @@ export default function Home() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [crisis, setCrisis] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState("");
+  const [pendingEdit, setPendingEdit] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -35,6 +51,8 @@ export default function Home() {
   const streamRef = useRef<MediaStream | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sessionIdRef = useRef<number | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const recordStartRef = useRef<number>(0);
 
   const router = useRouter();
   const supabase = createClient();
@@ -108,29 +126,22 @@ export default function Home() {
     }
   };
 
-  // ---- 1ターン処理 ----
-  const submitUserTurn = async (rawText: string) => {
-    const text = rawText.trim();
-    if (!text || isThinking) return;
-    setMicError(null);
-
-    setTextInput("");
-    const userMsg: Message = { role: "user", content: text };
-    const afterUser = [...messages, userMsg];
-    setMessages(afterUser);
-    setPhase("chat");
+  // ---- 1ターンの生成（履歴の末尾がユーザー発話。新規送信・編集再生成で共用）----
+  const runYoruTurn = async (history: Message[]) => {
+    setMessages(history);        // 編集再生成では「切り詰めた履歴」が即反映される
+    setCrisis(false);           // 危機判定もやり直す
+    setPhase("chat");           // closed から編集した場合もチャット表示へ戻す
     setIsThinking(true);
 
-    // 保存：初回は insert、以降は update
+    // 保存：初回は insert、以降は update（再生成では切り詰めた履歴で上書き）
     let sid = sessionIdRef.current;
     if (sid == null) {
-      sid = await startSession(afterUser);
+      sid = await startSession(history);
       sessionIdRef.current = sid;
     } else {
-      await persist(sid, afterUser, "open");
+      await persist(sid, history, "open");
     }
 
-    // YORUの返答を生成（履歴全部を渡す）
     const fallbackReply: ChatResponse = {
       reply: "うまく言葉を返せなかったみたい。でも、話してくれたことはちゃんとここにあるよ。",
       state: "close",
@@ -140,9 +151,8 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: afterUser }),
+        body: JSON.stringify({ messages: history }),
       });
-      // 非JSON応答でも throw させず、reply が取れなければフォールバックで静かに締める
       const parsed = await readJson<ChatResponse>(res);
       data = parsed && typeof parsed.reply === "string" ? parsed : fallbackReply;
     } catch {
@@ -150,7 +160,7 @@ export default function Home() {
     }
 
     const yoruMsg: Message = { role: "yoru", content: data.reply };
-    const afterYoru = [...afterUser, yoruMsg];
+    const afterYoru = [...history, yoruMsg];
     setMessages(afterYoru);
     if (data.crisis) setCrisis(true);
 
@@ -161,9 +171,50 @@ export default function Home() {
 
     if (shouldClose) {
       setPhase("closed");
-      if (sid != null) finalize(sid, afterYoru);
+      if (sid != null) finalize(sid, afterYoru);   // 会話が変わったので締めタイトルも作り直す
+    } else {
+      setPhase("chat");           // continue に戻ったら closed→open 相当
     }
     setIsThinking(false);
+  };
+
+  // ---- 1ターン処理（新規送信）----
+  const submitUserTurn = async (rawText: string) => {
+    const text = rawText.trim();
+    if (!text || isThinking) return;
+    setMicError(null);
+    setTextInput("");
+    const userMsg: Message = { role: "user", content: text };
+    await runYoruTurn([...messages, userMsg]);
+  };
+
+  // ---- 送信済みの自分の発言を編集（[2]）----
+  // ChatGPT方式：保存すると編集地点より後を削除し、そこから会話を作り直す。
+  const startEdit = (i: number) => {
+    if (isThinking) return;
+    setEditingIndex(i);
+    setEditingText(messages[i]?.content ?? "");
+    setPendingEdit(false);
+  };
+  const cancelEdit = () => { setEditingIndex(null); setEditingText(""); setPendingEdit(false); };
+  // 保存押下：後続の会話が消える場合だけ、やさしく1回確認する
+  const requestSave = () => {
+    if (editingIndex === null || !editingText.trim()) return;
+    const hasAfter = editingIndex < messages.length - 1;
+    if (hasAfter) setPendingEdit(true);
+    else doRegenerate();
+  };
+  // 確認後：編集地点までで切り詰め、そこから再生成
+  const doRegenerate = async () => {
+    if (editingIndex === null) return;
+    const text = editingText.trim();
+    if (!text) return;
+    const editedMsg: Message = { role: "user", content: text };
+    const truncated = [...messages.slice(0, editingIndex), editedMsg];
+    setEditingIndex(null);
+    setEditingText("");
+    setPendingEdit(false);
+    await runYoruTurn(truncated);
   };
 
   // ---- 録音（入口・各ターン共通） ----
@@ -183,10 +234,12 @@ export default function Home() {
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
       mediaRecorder.ondataavailable = (e) => { chunksRef.current.push(e.data); };
+      mediaRecorder.onstart = () => { recordStartRef.current = performance.now(); };
       mediaRecorder.onstop = async () => {
         streamRef.current?.getTracks().forEach((t) => t.stop());
+        const durationMs = performance.now() - recordStartRef.current;
         const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
-        await transcribeAndSubmit(blob);
+        await transcribeAndSend(blob, durationMs);
       };
       mediaRecorder.start();
       setIsRecording(true);
@@ -210,7 +263,13 @@ export default function Home() {
     setIsTranscribing(true);
   };
 
-  const transcribeAndSubmit = async (blob: Blob) => {
+  const transcribeAndSend = async (blob: Blob, durationMs: number) => {
+    // [3] 実質無音/短すぎる録音は文字起こしせず破棄（幻聴防止）
+    if (durationMs < MIN_RECORDING_MS || blob.size < MIN_BLOB_BYTES) {
+      setIsTranscribing(false);
+      setMicError("うまく聞き取れなかったみたい。もう一度、話しかけてね。");
+      return;
+    }
     try {
       const ext = mimeTypeRef.current.includes("mp4") ? "m4a" : "webm";
       const formData = new FormData();
@@ -219,7 +278,16 @@ export default function Home() {
       const data = await readJson<{ transcript?: string }>(res);
       const transcript = (data?.transcript || "").trim();
       setIsTranscribing(false);
-      if (transcript) await submitUserTurn(transcript);
+      if (!transcript) return;
+      // [3] 定番の幻聴フレーズだけなら破棄（会話を始めない）
+      if (isLikelyHallucination(transcript)) {
+        setMicError("うまく聞き取れなかったみたい。もう一度、話しかけてね。");
+        return;
+      }
+      // [1] 声はそのまま自動送信（打ちかけがあれば前に足して保持）
+      const draft = textInput.trim();
+      setTextInput("");
+      await submitUserTurn(draft ? draft + " " + transcript : transcript);
     } catch {
       setIsTranscribing(false);
     }
@@ -302,11 +370,21 @@ export default function Home() {
         @keyframes vj-emerge { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         .vj-msg-yoru { align-self: flex-start; font-family: 'Zen Old Mincho', serif; font-size: 16px; color: rgba(255,255,255,0.82); padding-left: 14px; border-left: 2px solid rgba(139,92,246,0.35); }
         .vj-msg-user { align-self: flex-end; font-size: 14px; color: rgba(255,255,255,0.62); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px 14px 4px 14px; padding: 12px 15px; }
+        .vj-msg-editable { cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+        .vj-msg-editable:hover { border-color: rgba(139,92,246,0.35); background: rgba(139,92,246,0.06); }
+        .vj-msg-edit { align-self: flex-end; max-width: 82%; display: flex; flex-direction: column; gap: 8px; }
+        .vj-edit-area { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(139,92,246,0.4); border-radius: 12px; padding: 10px 12px; font-size: 15px; color: rgba(255,255,255,0.94); line-height: 1.7; outline: none; resize: none; font-family: 'Noto Sans JP', sans-serif; box-sizing: border-box; }
+        .vj-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .vj-edit-confirm { display: flex; flex-direction: column; gap: 8px; }
+        .vj-edit-confirm-text { font-size: 12px; color: rgba(255,255,255,0.55); line-height: 1.7; letter-spacing: 0.02em; margin: 0; }
+        .vj-edit-cancel { font-size: 12px; color: rgba(255,255,255,0.4); background: none; border: none; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; padding: 6px 10px; }
+        .vj-edit-save { font-size: 12px; color: rgba(167,139,250,0.95); background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.3); border-radius: 16px; padding: 6px 16px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; }
+        .vj-edit-save:disabled { opacity: 0.4; cursor: not-allowed; }
         .vj-thinking { align-self: flex-start; padding-left: 14px; }
 
         /* ---- 入力バー（各ターン） ---- */
         .vj-inputbar { width: 100%; padding: 12px 0 26px; display: flex; align-items: flex-end; gap: 10px; }
-        .vj-textarea { flex: 1; background: rgba(255,255,255,0.03); border: 1px solid rgba(139,92,246,0.25); border-radius: 14px; padding: 12px 14px; font-size: 14px; color: rgba(255,255,255,0.85); outline: none; resize: none; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.03em; line-height: 1.7; box-sizing: border-box; transition: border-color 0.2s; max-height: 120px; }
+        .vj-textarea { flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(139,92,246,0.25); border-radius: 14px; padding: 14px 16px; font-size: 16px; color: rgba(255,255,255,0.94); outline: none; resize: none; font-family: 'Noto Sans JP', sans-serif; letter-spacing: 0.03em; line-height: 1.85; box-sizing: border-box; transition: border-color 0.2s; max-height: 180px; }
         .vj-textarea:focus { border-color: rgba(139,92,246,0.5); }
         .vj-textarea::placeholder { color: rgba(255,255,255,0.2); }
         .vj-textarea:disabled { opacity: 0.5; }
@@ -392,7 +470,8 @@ export default function Home() {
               <div className="vj-entry-textwrap">
                 <textarea
                   className="vj-textarea"
-                  rows={2}
+                  rows={4}
+                  ref={inputRef}
                   placeholder="声を出せないときは、ここに書いてね"
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
@@ -425,9 +504,41 @@ export default function Home() {
 
               <div className="vj-thread" ref={scrollRef}>
                 {messages.map((m, i) => (
-                  <div key={i} className={`vj-msg ${m.role === "yoru" ? "vj-msg-yoru" : "vj-msg-user"}`}>
-                    {m.content}
-                  </div>
+                  m.role === "user" && editingIndex === i ? (
+                    <div key={i} className="vj-msg vj-msg-edit">
+                      <textarea
+                        className="vj-edit-area"
+                        rows={2}
+                        autoFocus
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        disabled={pendingEdit}
+                      />
+                      {pendingEdit ? (
+                        <div className="vj-edit-confirm">
+                          <p className="vj-edit-confirm-text">ここから先の会話は消えて、ここから新しく続きになるよ。いい？</p>
+                          <div className="vj-edit-actions">
+                            <button className="vj-edit-cancel" onClick={cancelEdit}>やめておく</button>
+                            <button className="vj-edit-save" onClick={doRegenerate}>うん、続ける</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="vj-edit-actions">
+                          <button className="vj-edit-cancel" onClick={cancelEdit}>やめる</button>
+                          <button className="vj-edit-save" onClick={requestSave} disabled={!editingText.trim()}>保存</button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      key={i}
+                      className={`vj-msg ${m.role === "yoru" ? "vj-msg-yoru" : "vj-msg-user vj-msg-editable"}`}
+                      onClick={m.role === "user" && !isThinking ? () => startEdit(i) : undefined}
+                      title={m.role === "user" ? "タップで直せるよ" : undefined}
+                    >
+                      {m.content}
+                    </div>
+                  )
                 ))}
                 {isThinking && (
                   <div className="vj-thinking">
@@ -464,8 +575,9 @@ export default function Home() {
                   <div className="vj-inputbar">
                     <textarea
                       className="vj-textarea"
-                      rows={1}
-                      placeholder={isRecording ? "聴いてるよ" : "こたえを書く、または右のマイクで話す"}
+                      rows={2}
+                      ref={inputRef}
+                      placeholder={isRecording ? "聴いてるよ" : "返事をする。\nまたは右のマイクで話す。"}
                       value={textInput}
                       onChange={(e) => setTextInput(e.target.value)}
                       disabled={busy}
