@@ -10,13 +10,39 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function POST(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+// Vercel Cron は GET で叩くため、認証を検証したうえで GET/POST の両方から
+// 同じ本体(runReminders)を呼ぶ。CRON_SECRET 未設定時は常に拒否する
+// （空文字の "Bearer " と一致してしまう事故を防ぐ）。
+function isAuthorized(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  return request.headers.get("authorization") === `Bearer ${secret}`;
+}
 
+export async function GET(request: NextRequest) {
+  return handleReminder(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handleReminder(request);
+}
+
+async function handleReminder(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    const results = await runReminders();
+    return NextResponse.json({ success: true, ...results });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function runReminders() {
+  // 本体は元POSTの実装をそのまま移設（差分最小化のためインデント維持）。
+  {
     const today = new Date().toISOString().split("T")[0];
 
     // reminder_enabledがtrueのユーザーのみ取得
@@ -144,9 +170,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, ...results });
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return results;
   }
 }
