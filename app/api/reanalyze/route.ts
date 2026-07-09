@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
       summary: result.summary,
       insight: result.insight,
       trigger: result.trigger,
+      // signals は analyzeEmotion 内で sanitizeSignals 済み（indirect は 0.4 にクランプ）。
+      // 対話セッションの finalize でそのまま journals.signals に保存する。
+      signals: result.signals,
       message: "",
     });
   } catch (e: unknown) {

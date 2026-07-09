@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "./lib/supabase";
 import { readJson } from "./lib/http";
+import type { Signals } from "./lib/ai";
 import { useRouter } from "next/navigation";
 
 type Role = "user" | "yoru";
@@ -109,16 +110,32 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: userText }),
       });
-      const data = await readJson<{ nuance?: string; emotion?: string; trigger?: string }>(res);
-      // 異常応答（HTML/空/504 等）なら data は null。タイトル・感情の更新は
-      // 諦め、セッション本体（messages/transcript）は保存済みなので静かに抜ける。
-      if (!data) return;
+      const data = await readJson<{
+        nuance?: string;
+        emotion?: string;
+        trigger?: string;
+        signals?: Signals | null;
+      }>(res);
+      // 異常応答（HTML/空/504 等）なら data は null。タイトル・感情・signals の更新は
+      // 諦め、セッション本体（messages/transcript）は保存済みなので抜ける。
+      // signals は本番(main)のホーム録音では毎回保存されており、対話フローで欠落すると
+      // リグレッションになるため、失敗を握りつぶさず必ずログに残す。
+      if (!data) {
+        console.error("[finalize] reanalyze failed; signals not extracted (left null)", { sid });
+        return;
+      }
+      // 抽出できたが signals が null（＝モデル出力が壊れている/欠落）の場合も、
+      // null で保存しつつ原因を残す。signals は analyzeEmotion 内で sanitize 済み。
+      if (data.signals == null) {
+        console.error("[finalize] signals extraction returned null (saving signals=null)", { sid });
+      }
       await supabase
         .from("journals")
         .update({
           nuance: data.nuance || "",
           emotion: data.emotion || "穏やか",
           emotion_trigger: data.trigger || "その他",
+          signals: data.signals ?? null,
         })
         .eq("id", sid);
     } catch (e) {
