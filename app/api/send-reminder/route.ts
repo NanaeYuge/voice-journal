@@ -76,63 +76,31 @@ async function runReminders() {
         const email = userData?.user?.email;
         if (!email) { results.skipped++; continue; }
 
-        // 今日の記録を確認
-        const { data: todayJournals } = await supabase
+        // 直近（今日より前）の記録から想起の一文をつくる。
+        // 締め切り前の最新1件のみを参照し、なければ想起なしのフォールバックにする。
+        const { data: recentJournals } = await supabase
           .from("journals")
-          .select("id, nuance")
+          .select("nuance")
           .eq("user_id", profile.id)
-          .gte("created_at", `${today}T00:00:00`)
+          .lt("created_at", `${today}T00:00:00`)
           .neq("source", "timecapsule")
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-        const hasRecord = (todayJournals?.length ?? 0) > 0;
-        const latestNuance = todayJournals?.[0]?.nuance || "";
+        // 件名は固定。本文は「記録からの想起1文 + 固定の問い」の2文・60字以内。
+        // 解釈・採点・督促・許可/提案文はしない（憲法準拠）。
+        const subject = "今日は、どんな日だった？";
+        const question = "今の気持ちはどう？";
 
-        // 文言を分岐
-        let subject = "";
-        let bodyText = "";
+        // 末尾の句読点・記号を落として「〜、そんな感じだったみたいだね。」に自然につなぐ。
+        const recall = (recentJournals?.[0]?.nuance || "")
+          .trim()
+          .slice(0, 24)
+          .replace(/[。、.,!！?？…・\s]+$/u, "");
 
-        if (!hasRecord) {
-          const patterns = [
-            {
-              subject: "今日の気持ち、まだどこにも置いてないなら",
-              body: "今日のこと、まだどこにも置いてないなら、ここに残していってもいいよ。<br>うまくまとまってなくても大丈夫。そのままの言葉で置いていける。",
-            },
-            {
-              subject: "今夜、少しだけ話してみる？",
-              body: "忙しい日ほど、気持ちは残ったままになりやすい。<br>少しだけでも、ここに置いていけるよ。",
-            },
-            {
-              subject: "まだ言葉にしてないものがあったら",
-              body: "今日の気持ち、まだどこにも置いてないなら<br>ここに置いていってもいいよ。",
-            },
-          ];
-          const p = patterns[Math.floor(Math.random() * patterns.length)];
-          subject = p.subject;
-          bodyText = p.body;
-        } else {
-          const nuanceText = latestNuance
-            ? `今日は、${latestNuance}みたいなものが少し残ってたのかもしれない。`
-            : "今日は、少しだけ言葉にしてたね。";
-
-          const patterns = [
-            {
-              subject: "今日の記録、まだ続きがあるかも",
-              body: `${nuanceText}<br>続きがあるなら、ここに置いていってもいいよ。`,
-            },
-            {
-              subject: "あの続き、少しだけ残してみる？",
-              body: `${nuanceText}<br>途中で止まった気持ちがあるなら、そのままの形で残してもいい。`,
-            },
-            {
-              subject: "今日の気持ち、まだ途中かもしれない",
-              body: `${nuanceText}<br>まだまとまりきってないものがあるなら、少しだけ続きを話してみる？`,
-            },
-          ];
-          const p = patterns[Math.floor(Math.random() * patterns.length)];
-          subject = p.subject;
-          bodyText = p.body;
-        }
+        const bodyText = recall
+          ? `${recall}、そんな感じだったみたいだね。<br>${question}`
+          : `今日は、どんな時間だったろう。<br>${question}`;
 
         // メール送信
         await resend.emails.send({
