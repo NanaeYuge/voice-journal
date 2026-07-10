@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "../lib/supabase";
+import { readJson } from "../lib/http";
 import { useRouter } from "next/navigation";
+
+type SessionMessage = { role: "user" | "yoru"; content: string };
 
 type Journal = {
   id: number;
@@ -16,7 +19,27 @@ type Journal = {
   message?: string;
   source?: string;
   linked_journal_id?: number;
+  messages?: SessionMessage[] | null;
+  session_status?: string;
 };
+
+// セッション行の往復を発話者つきで描画する。messages が無ければ transcript を素朴に表示。
+function SessionDialogue({ journal }: { journal: Journal }) {
+  const msgs = Array.isArray(journal.messages) ? journal.messages : [];
+  if (msgs.length === 0) {
+    return <p className="detail-transcript" style={{ whiteSpace: "pre-wrap" }}>{journal.transcript}</p>;
+  }
+  return (
+    <div className="session-dialogue">
+      {msgs.map((m, i) => (
+        <div key={i} className={`session-turn session-turn--${m.role}`}>
+          <span className="session-turn-who">{m.role === "yoru" ? "YORU" : "あなた"}</span>
+          <p className="session-turn-text">{m.content}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 type InsightMemo = {
   id: number;
@@ -64,9 +87,37 @@ function formatCapsuleDate(str: string) {
 
 function JournalCard({ journal }: { journal: Journal }) {
   const [expanded, setExpanded] = useState(false);
+  const isSession = journal.source === "session";
   const isTextMemo = journal.transcript === journal.summary;
   const hasTranscript = journal.transcript && journal.transcript.length > 0 && !isTextMemo;
   const isLong = (journal.transcript?.length ?? 0) > 60;
+
+  if (isSession) {
+    const turnCount = Array.isArray(journal.messages) ? journal.messages.length : 0;
+    return (
+      <div className="jcard">
+        <p className="jcard-time">
+          {new Date(journal.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+          <span className="jcard-session-tag">対話</span>
+        </p>
+        {journal.nuance && <p className="jcard-nuance">{journal.nuance}</p>}
+        {turnCount > 0 && (
+          <div className="jcard-transcript-wrap">
+            {expanded ? (
+              <>
+                <SessionDialogue journal={journal} />
+                <button className="jcard-expand-btn" onClick={() => setExpanded(false)}>▲ 閉じる</button>
+              </>
+            ) : (
+              <button className="jcard-expand-btn" onClick={() => setExpanded(true)}>
+                やりとりを見る ▼
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="jcard">
@@ -110,12 +161,17 @@ function JournalDetailModal({ journal, onClose, onBack }: { journal: Journal; on
             <p className="detail-nuance">{journal.nuance}</p>
           </div>
         )}
-        {journal.transcript && (
+        {journal.source === "session" ? (
+          <div className="detail-section">
+            <p className="detail-label">この日のやりとり</p>
+            <SessionDialogue journal={journal} />
+          </div>
+        ) : journal.transcript ? (
           <div className="detail-section">
             <p className="detail-label">元の発言</p>
             <p className="detail-transcript">{journal.transcript}</p>
           </div>
-        )}
+        ) : null}
         <button className="detail-close-btn" onClick={onBack}>← 戻る</button>
       </div>
     </div>
@@ -244,7 +300,7 @@ function RecordingModal({ capsule, onClose, onSaved }: { capsule: TimeCapsule; o
       const formData = new FormData();
       formData.append("audio", blob, "recording.webm");
       const res = await fetch("/api/analyze", { method: "POST", body: formData });
-      const data = await res.json();
+      const data = (await readJson<{ transcript?: string; emotion?: string }>(res)) ?? {};
       await supabase.from("journals").insert({
         user_id: userData.user.id,
         transcript: data.transcript || "",
@@ -417,8 +473,8 @@ export default function LogsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ journals: targetJournals, period, userId: userData.user?.id }),
       });
-      const data = await res.json();
-      setWeeklySummary(data.summary ?? null);
+      const data = await readJson<{ summary?: string | null }>(res);
+      setWeeklySummary(data?.summary ?? null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -514,6 +570,15 @@ export default function LogsPage() {
         .jcard-expand-btn { font-size: 11px; color: rgba(139,92,246,0.4); background: none; border: none; cursor: pointer; letter-spacing: 0.04em; font-family: 'Noto Sans JP', sans-serif; padding: 0; transition: color 0.2s; text-align: left; line-height: 1.6; }
         .jcard-expand-btn:hover { color: rgba(139,92,246,0.8); }
         .jcard-transcript { font-size: 12px; color: rgba(255,255,255,0.28); line-height: 1.75; letter-spacing: 0.03em; margin: 0 0 6px 0; padding: 10px 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border-left: 2px solid rgba(139,92,246,0.15); }
+        .jcard-session-tag { display: inline-block; margin-left: 10px; font-size: 9px; color: rgba(167,139,250,0.7); background: rgba(139,92,246,0.12); border-radius: 10px; padding: 2px 8px; letter-spacing: 0.1em; vertical-align: middle; }
+
+        .session-dialogue { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 10px; }
+        .session-turn { display: flex; flex-direction: column; gap: 4px; }
+        .session-turn-who { font-size: 9px; letter-spacing: 0.14em; color: rgba(255,255,255,0.28); }
+        .session-turn--yoru .session-turn-who { color: rgba(167,139,250,0.7); }
+        .session-turn-text { font-size: 13px; line-height: 1.85; letter-spacing: 0.02em; margin: 0; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; }
+        .session-turn--yoru .session-turn-text { color: rgba(255,255,255,0.72); background: rgba(139,92,246,0.06); border-left: 2px solid rgba(139,92,246,0.3); font-family: 'Zen Old Mincho', serif; }
+        .session-turn--user .session-turn-text { color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.02); }
 
         .today-empty { font-size: 13px; color: rgba(255,255,255,0.18); letter-spacing: 0.06em; padding: 12px 0 20px; }
         .timeline-wrap { margin-top: 44px; }
