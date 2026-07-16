@@ -10,6 +10,74 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// ── リマインドの文面（すべてここに集約する。将来ここだけ見れば全文が読める）──
+// 本文一行目は journals.emotion の辞書引きだけで決める。
+// journals.nuance は「具体的な状況・人物・出来事を含める」指示で生成されるため
+// （app/lib/ai.ts）、強い出来事語がそのまま入る。メールには一切引用しない。
+const REMINDER_COPY = {
+  // ケースA/B 共通の述部。emotion がここに無い場合（穏やか・未分類・null・
+  // 想定外の値、そのすべて）は各ケースの neutral にフォールバックする。
+  predicateByEmotion: {
+    不安: "不安な気持ちを話してくれたね。",
+    疲れ: "疲れていることを話してくれたね。",
+    悲しい: "悲しい気持ちを話してくれたね。",
+    怒り: "もやもやした気持ちを話してくれたね。",
+    嬉しい: "うれしかったことを話してくれたね。",
+  } as Record<string, string | undefined>,
+  // A: 前日（JST基準で1日前）に記録あり
+  A: {
+    subject: "昨日の気持ち、その後どう？",
+    prefix: "昨日は、",
+    neutral: "昨日のこと、話してくれたね。",
+  },
+  // B: JST基準で2〜7日前に記録あり。経過日数には言及しない。
+  B: {
+    subject: "このあいだの気持ち、その後どう？",
+    prefix: "このあいだは、",
+    neutral: "このあいだのこと、話してくれたね。",
+  },
+  // C: 記録なし、または8日以上前。想起しない。
+  C: {
+    subject: "今日は、どんな日だった？",
+    line: "今日は、どんな時間だったろう。",
+  },
+  question: "今の気持ちはどう？",
+  cta: "今の気持ちを話す",
+  tail: "話したくない日は、そのままで大丈夫。",
+};
+
+type ReminderCase = "A" | "B" | "C";
+
+// 日付境界はJST(UTC+9)固定で計算する。
+// TODO: per-user timezone 対応(user_profiles.timezone が未使用のため)
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// UTCの瞬間を「JSTでの暦日(YYYY-MM-DD)」に落とす
+function toJstDateString(instant: Date): string {
+  return new Date(instant.getTime() + JST_OFFSET_MS).toISOString().split("T")[0];
+}
+
+// JSTの暦日どうしの差を日数で返す（どちらもUTC正午基準ではなく暦日文字列で比較する）
+function jstDayDiff(fromJstDate: string, toJstDate: string): number {
+  const from = Date.parse(`${fromJstDate}T00:00:00Z`);
+  const to = Date.parse(`${toJstDate}T00:00:00Z`);
+  return Math.round((to - from) / 86400000);
+}
+
+function resolveCase(daysAgo: number | null): ReminderCase {
+  if (daysAgo === null) return "C"; // 記録なし
+  if (daysAgo === 1) return "A";
+  if (daysAgo >= 2 && daysAgo <= 7) return "B";
+  return "C"; // 8日以上前：記録があっても想起しない
+}
+
+function buildFirstLine(kase: ReminderCase, emotion: string | null): string {
+  if (kase === "C") return REMINDER_COPY.C.line;
+  const copy = REMINDER_COPY[kase];
+  const predicate = emotion ? REMINDER_COPY.predicateByEmotion[emotion] : undefined;
+  return predicate ? `${copy.prefix}${predicate}` : copy.neutral;
+}
+
 // Vercel Cron は GET で叩くため、認証を検証したうえで GET/POST の両方から
 // 同じ本体(runReminders)を呼ぶ。CRON_SECRET 未設定時は常に拒否する
 // （空文字の "Bearer " と一致してしまう事故を防ぐ）。
@@ -43,7 +111,8 @@ async function handleReminder(request: NextRequest) {
 async function runReminders() {
   // 本体は元POSTの実装をそのまま移設（差分最小化のためインデント維持）。
   {
-    const today = new Date().toISOString().split("T")[0];
+    // 送信日・二重送信チェックの単位もJSTの暦日に揃える
+    const todayJst = toJstDateString(new Date());
 
     // reminder_enabledがtrueのユーザーのみ取得
     const { data: profiles, error: profilesError } = await supabase
@@ -63,7 +132,7 @@ async function runReminders() {
           .select("id")
           .eq("user_id", profile.id)
           .eq("type", "reminder")
-          .eq("target_date", today)
+          .eq("target_date", todayJst)
           .single();
 
         if (alreadySent) {
@@ -76,31 +145,30 @@ async function runReminders() {
         const email = userData?.user?.email;
         if (!email) { results.skipped++; continue; }
 
-        // 直近（今日より前）の記録から想起の一文をつくる。
-        // 締め切り前の最新1件のみを参照し、なければ想起なしのフォールバックにする。
+        // JST当日0:00より前の最新1件だけを参照する。
+        // 本人が削除した記録（deleted_at）は絶対に引かない。
+        // 参照するのは emotion のみ。nuance は引かない（本文に出来事語を再現しないため）。
         const { data: recentJournals } = await supabase
           .from("journals")
-          .select("nuance")
+          .select("created_at, emotion")
           .eq("user_id", profile.id)
-          .lt("created_at", `${today}T00:00:00`)
+          .lt("created_at", `${todayJst}T00:00:00+09:00`)
+          .is("deleted_at", null)
           .neq("source", "timecapsule")
           .order("created_at", { ascending: false })
           .limit(1);
 
-        // 件名は固定。本文は「記録からの想起1文 + 固定の問い」の2文・60字以内。
+        // 最新1件がJST基準で何日前かを出し、A/B/C を決める。
+        const latest = recentJournals?.[0];
+        const daysAgo = latest
+          ? jstDayDiff(toJstDateString(new Date(latest.created_at)), todayJst)
+          : null;
+        const kase = resolveCase(daysAgo);
+
+        // 本文は「一行目（辞書引き） + 固定の問い」の2文。
         // 解釈・採点・督促・許可/提案文はしない（憲法準拠）。
-        const subject = "今日は、どんな日だった？";
-        const question = "今の気持ちはどう？";
-
-        // 末尾の句読点・記号を落として「〜、そんな感じだったみたいだね。」に自然につなぐ。
-        const recall = (recentJournals?.[0]?.nuance || "")
-          .trim()
-          .slice(0, 24)
-          .replace(/[。、.,!！?？…・\s]+$/u, "");
-
-        const bodyText = recall
-          ? `${recall}、そんな感じだったみたいだね。<br>${question}`
-          : `今日は、どんな時間だったろう。<br>${question}`;
+        const subject = REMINDER_COPY[kase].subject;
+        const bodyText = `${buildFirstLine(kase, latest?.emotion ?? null)}<br>${REMINDER_COPY.question}`;
 
         // メール送信
         await resend.emails.send({
@@ -114,9 +182,12 @@ async function runReminders() {
                 ${bodyText}
               </p>
               <a href="${appUrl}" style="display:inline-block;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.35);color:rgba(167,139,250,0.9);font-size:13px;letter-spacing:0.1em;padding:14px 28px;border-radius:24px;text-decoration:none;">
-                今の気持ちを話す
+                ${REMINDER_COPY.cta}
               </a>
-              <p style="font-size:11px;color:rgba(255,255,255,0.15);margin:48px 0 0 0;line-height:1.8;">
+              <p style="font-size:13px;font-weight:300;color:rgba(255,255,255,0.55);margin:20px 0 0 0;line-height:1.8;">
+                ${REMINDER_COPY.tail}
+              </p>
+              <p style="font-size:12px;color:rgba(255,255,255,0.45);margin:48px 0 0 0;line-height:1.8;">
                 このメールはYORUからお送りしています。<br>
                 設定画面からリマインドをオフにできます。
               </p>
@@ -128,7 +199,7 @@ async function runReminders() {
         await supabase.from("email_logs").insert({
           user_id: profile.id,
           type: "reminder",
-          target_date: today,
+          target_date: todayJst,
         });
 
         results.sent++;
