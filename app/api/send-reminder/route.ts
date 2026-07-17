@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Resend の生成はモジュール読み込み時ではなく、実際に送る直前まで遅らせる。
+// モジュール先頭で new すると、環境変数が注入されないビルド時の評価
+// （next build の "Collecting page data"）でコンストラクタが投げ、ビルドごと落ちる。
+// 生成のタイミングだけを変えたもので、送信の宛先・文面・条件は変えていない。
+let resendClient: Resend | null = null;
+function getResend(): Resend {
+  if (!resendClient) resendClient = new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
+}
+
 const appUrl = process.env.APP_URL || "https://voice-journal-inky.vercel.app";
 
 const supabase = createClient(
@@ -114,7 +123,9 @@ async function runReminders() {
     // 送信日・二重送信チェックの単位もJSTの暦日に揃える
     const todayJst = toJstDateString(new Date());
 
-    // reminder_enabledがtrueのユーザーのみ取得
+    // reminder_enabledがtrueのユーザーのみ取得。
+    // user_profiles に行が無いユーザーはここで対象外になる（意図的。行が無い既存
+    // ユーザーへの配信再開は別途設計するため、ここでON扱いに"直さない"こと）。
     const { data: profiles, error: profilesError } = await supabase
       .from("user_profiles")
       .select("id")
@@ -126,6 +137,21 @@ async function runReminders() {
 
     for (const profile of profiles || []) {
       try {
+        // 記録を一度も残していないユーザーには送らない（会員登録だけのユーザーを
+        // ここで構造的に外す）。「記録」の定義は下の想起クエリと揃える:
+        // 本人が削除した行(deleted_at)とタイムカプセルは数えない。
+        const { count: journalCount } = await supabase
+          .from("journals")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", profile.id)
+          .is("deleted_at", null)
+          .neq("source", "timecapsule");
+
+        if (!journalCount) {
+          results.skipped++;
+          continue;
+        }
+
         // 二重送信チェック
         const { data: alreadySent } = await supabase
           .from("email_logs")
@@ -171,7 +197,7 @@ async function runReminders() {
         const bodyText = `${buildFirstLine(kase, latest?.emotion ?? null)}<br>${REMINDER_COPY.question}`;
 
         // メール送信
-        await resend.emails.send({
+        await getResend().emails.send({
           from: "YORU <hello@yoru-voice.com>",
           to: email,
           subject,
