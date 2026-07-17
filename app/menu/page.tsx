@@ -433,7 +433,7 @@ export default function MenuPage() {
           <div className="menu-card">
             <p className="menu-section-label">リマインドメール</p>
             <div className="menu-toggle-row">
-              <p className="menu-toggle-desc">毎晩21時ごろ、ふり返りのお誘いが届きます。</p>
+              <p className="menu-toggle-desc">毎晩21時ごろ、YORUからメールが届きます。</p>
               <button
                 type="button"
                 role="switch"
