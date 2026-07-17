@@ -378,7 +378,10 @@ export default function Home() {
         .vj-memo-link .vj-memo-accent { color: rgba(167,139,250,0.9); text-decoration: underline; text-underline-offset: 3px; }
 
         /* ---- 対話 ---- */
-        .vj-chat-header { width: 100%; text-align: center; padding: 26px 0 16px; }
+        .vj-chat-header { width: 100%; display: flex; align-items: center; gap: 8px; padding: 18px 0 16px; }
+        .vj-chat-spacer { flex: 1 1 0; min-width: 0; }
+        .vj-chat-titles { flex: 0 0 auto; text-align: center; }
+        .vj-chat-nav { flex: 1 1 0; display: flex; justify-content: flex-end; gap: 8px; }
         .vj-chat-label { font-family: 'Zen Old Mincho', serif; font-size: 20px; font-weight: 600; letter-spacing: 0.14em; color: #e8d5a0; margin: 0; }
         .vj-chat-date { font-size: 10px; color: rgba(255,255,255,0.4); letter-spacing: 0.12em; margin: 6px 0 0; }
 
@@ -433,10 +436,12 @@ export default function Home() {
         <div className="vj-star vj-star-2" />
         <div className="vj-glow" />
 
-        <nav className="vj-nav">
-          <button className="vj-nav-btn" onClick={() => router.push("/logs")}>きろく</button>
-          <button className="vj-nav-btn" onClick={() => router.push("/menu")}>設定</button>
-        </nav>
+        {phase === "entry" && (
+          <nav className="vj-nav">
+            <button className="vj-nav-btn" onClick={() => router.push("/logs")}>きろく</button>
+            <button className="vj-nav-btn" onClick={() => router.push("/menu")}>設定</button>
+          </nav>
+        )}
 
         <div className="vj-content">
           {phase === "entry" ? (
@@ -515,8 +520,15 @@ export default function Home() {
           ) : (
             <>
               <div className="vj-chat-header">
-                <p className="vj-chat-label">YORU</p>
-                <p className="vj-chat-date">{dateStr}</p>
+                <span className="vj-chat-spacer" aria-hidden="true" />
+                <div className="vj-chat-titles">
+                  <p className="vj-chat-label">YORU</p>
+                  <p className="vj-chat-date">{dateStr}</p>
+                </div>
+                <nav className="vj-chat-nav">
+                  <button className="vj-nav-btn" onClick={() => router.push("/logs")}>きろく</button>
+                  <button className="vj-nav-btn" onClick={() => router.push("/menu")}>設定</button>
+                </nav>
               </div>
 
               <div className="vj-thread" ref={scrollRef}>
