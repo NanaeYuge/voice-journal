@@ -12,6 +12,11 @@ export default function MenuPage() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderReady, setReminderReady] = useState(false);
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState("");
 
   const router = useRouter();
   const supabase = createClient();
@@ -22,6 +27,18 @@ export default function MenuPage() {
       const { data, error } = await supabase.auth.getUser();
       if (error || !data.user) { router.push("/login"); return; }
       setEmail(data.user.email ?? "");
+      setUserId(data.user.id);
+
+      // トグルには「実際に届くかどうか」を出す。送信cronは user_profiles に行があり
+      // かつ reminder_enabled=true の人だけに送るので、行が無い場合はOFFと表示する
+      // （行が無いのに「オン」と見せると嘘になるため）。
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("reminder_enabled")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      setReminderEnabled(profile?.reminder_enabled === true);
+      setReminderReady(true);
     };
     checkUser();
   }, [router, supabase]);
@@ -59,6 +76,27 @@ export default function MenuPage() {
       setNewPasswordConfirm("");
     }
     setPasswordLoading(false);
+  };
+
+  // タップで即保存。オフにするときの確認・引き止めはしない。
+  const handleReminderToggle = async () => {
+    if (!userId || !reminderReady || reminderSaving) return;
+    const next = !reminderEnabled;
+    setReminderSaving(true);
+    setReminderMessage("");
+    // 行が無いユーザーもここで自分の行を作れるように upsert する。
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .upsert({ id: userId, reminder_enabled: next }, { onConflict: "id" })
+      .select("reminder_enabled")
+      .single();
+    if (error || !data) {
+      setReminderMessage("保存できませんでした。時間をおいてもう一度お試しください。");
+    } else {
+      // 表示は保存結果の返却値で決める（楽観更新はしない）。
+      setReminderEnabled(data.reminder_enabled === true);
+    }
+    setReminderSaving(false);
   };
 
   const handleLogout = async () => {
@@ -205,6 +243,50 @@ export default function MenuPage() {
           line-height: 1.7;
         }
 
+        .menu-toggle-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+        }
+        .menu-toggle-desc {
+          margin: 0;
+          font-size: 12px;
+          font-weight: 300;
+          color: rgba(255,255,255,0.45);
+          line-height: 1.8;
+          letter-spacing: 0.03em;
+        }
+        .menu-toggle {
+          flex-shrink: 0;
+          position: relative;
+          width: 46px;
+          height: 26px;
+          padding: 0;
+          border-radius: 50px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.05);
+          cursor: pointer;
+          transition: background 0.2s, border-color 0.2s;
+        }
+        .menu-toggle.is-on {
+          background: linear-gradient(135deg, #5b21b6 0%, #8b5cf6 100%);
+          border-color: rgba(139,92,246,0.5);
+        }
+        .menu-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+        .menu-toggle-knob {
+          position: absolute;
+          top: 3px; left: 3px;
+          width: 18px; height: 18px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.5);
+          transition: transform 0.2s, background 0.2s;
+        }
+        .menu-toggle.is-on .menu-toggle-knob {
+          transform: translateX(20px);
+          background: rgba(255,255,255,0.95);
+        }
+
         .menu-links {
           display: flex;
           justify-content: center;
@@ -345,6 +427,26 @@ export default function MenuPage() {
               {passwordLoading ? "..." : "パスワードを変更"}
             </button>
             {passwordMessage && <p className="menu-msg">{passwordMessage}</p>}
+          </div>
+
+          {/* リマインドメール */}
+          <div className="menu-card">
+            <p className="menu-section-label">リマインドメール</p>
+            <div className="menu-toggle-row">
+              <p className="menu-toggle-desc">毎晩21時ごろ、ふり返りのお誘いが届きます。</p>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={reminderEnabled}
+                aria-label="リマインドメール"
+                className={`menu-toggle${reminderEnabled ? " is-on" : ""}`}
+                onClick={handleReminderToggle}
+                disabled={!reminderReady || reminderSaving}
+              >
+                <span className="menu-toggle-knob" />
+              </button>
+            </div>
+            {reminderMessage && <p className="menu-msg">{reminderMessage}</p>}
           </div>
 
           {/* 規約・プライバシー */}

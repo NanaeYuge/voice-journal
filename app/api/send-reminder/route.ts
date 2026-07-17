@@ -114,7 +114,9 @@ async function runReminders() {
     // 送信日・二重送信チェックの単位もJSTの暦日に揃える
     const todayJst = toJstDateString(new Date());
 
-    // reminder_enabledがtrueのユーザーのみ取得
+    // reminder_enabledがtrueのユーザーのみ取得。
+    // user_profiles に行が無いユーザーはここで対象外になる（意図的。行が無い既存
+    // ユーザーへの配信再開は別途設計するため、ここでON扱いに"直さない"こと）。
     const { data: profiles, error: profilesError } = await supabase
       .from("user_profiles")
       .select("id")
@@ -126,6 +128,21 @@ async function runReminders() {
 
     for (const profile of profiles || []) {
       try {
+        // 記録を一度も残していないユーザーには送らない（会員登録だけのユーザーを
+        // ここで構造的に外す）。「記録」の定義は下の想起クエリと揃える:
+        // 本人が削除した行(deleted_at)とタイムカプセルは数えない。
+        const { count: journalCount } = await supabase
+          .from("journals")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", profile.id)
+          .is("deleted_at", null)
+          .neq("source", "timecapsule");
+
+        if (!journalCount) {
+          results.skipped++;
+          continue;
+        }
+
         // 二重送信チェック
         const { data: alreadySent } = await supabase
           .from("email_logs")
