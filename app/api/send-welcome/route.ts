@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Resend の生成はモジュール読み込み時ではなく、実際に送る直前まで遅らせる。
+// モジュール先頭で new すると、環境変数が注入されないビルド時の評価
+// （next build の "Collecting page data"）でコンストラクタが投げ、ビルドごと落ちる。
+// 生成のタイミングだけを変えたもので、送信の宛先・文面・条件は変えていない。
+let resendClient: Resend | null = null;
+function getResend(): Resend {
+  if (!resendClient) resendClient = new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
+}
+
 const appUrl = process.env.APP_URL || "https://voice-journal-inky.vercel.app";
 
 export async function POST(request: NextRequest) {
@@ -9,7 +18,7 @@ export async function POST(request: NextRequest) {
     const { email } = await request.json();
     if (!email) return NextResponse.json({ error: "No email" }, { status: 400 });
 
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "YORU <hello@yoru-voice.com>",
       to: email,
       subject: "はじめまして。YORUです。",
