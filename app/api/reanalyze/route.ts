@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeEmotion } from "../../lib/ai";
-import { getSessionUserId } from "../../lib/supabase-server";
 
 export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
   try {
-    // ログイン必須。未ログインの要求はここで弾く（OpenAIを呼ばせない）。
-    if (!(await getSessionUserId())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { transcript } = await request.json();
     if (!transcript) {
       return NextResponse.json({ error: "No transcript" }, { status: 400 });

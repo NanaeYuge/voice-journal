@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { transcribeAudio } from "../../lib/ai";
-import { getSessionUserId } from "../../lib/supabase-server";
 
 export const maxDuration = 30;
 
 // 音声 → テキストのみ。対話ループの各ターン（声で答える）用。
 export async function POST(request: NextRequest) {
   try {
-    // ログイン必須。未ログインの要求はここで弾く（OpenAIを呼ばせない）。
-    if (!(await getSessionUserId())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const formData = await request.formData();
     const audio = formData.get("audio");
 

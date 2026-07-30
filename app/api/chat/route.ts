@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { continueReflection, type ReflectionTurn } from "../../lib/ai";
-import { getSessionUserId } from "../../lib/supabase-server";
 
 export const maxDuration = 30;
 
@@ -8,11 +7,6 @@ export const maxDuration = 30;
 // LLMは状態を持たないので、messages全体が文脈の役割を担う。
 export async function POST(request: NextRequest) {
   try {
-    // ログイン必須。未ログインの要求はここで弾く（OpenAIを呼ばせない）。
-    if (!(await getSessionUserId())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = await request.json();
     const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
 

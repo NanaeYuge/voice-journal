@@ -66,11 +66,11 @@ if (data.user) {
     product_improvement_consent: true,
   });
 
-  // ウェルカムメール送信。宛先は渡さない（サーバーが userId から auth.users を引く）。
+  // ウェルカムメール送信
   await fetch("/api/send-welcome", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId: data.user.id }),
+    body: JSON.stringify({ email: data.user.email }),
   });
 }
 setMessage("確認メールを送りました。メールをチェックしてね。");
