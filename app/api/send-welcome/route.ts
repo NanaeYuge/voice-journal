@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Resend の生成はモジュール読み込み時ではなく、実際に送る直前まで遅らせる。
 // モジュール先頭で new すると、環境変数が注入されないビルド時の評価
@@ -13,10 +14,54 @@ function getResend(): Resend {
 
 const appUrl = process.env.APP_URL || "https://voice-journal-inky.vercel.app";
 
+// Resend と同じ理由で、生成はモジュール読み込み時ではなく呼ばれた時まで遅らせる。
+// モジュール先頭で作ると、環境変数が注入されないビルド時の評価
+// （next build の "Collecting page data"）で throw し、ビルドごと落ちる。
+let supabaseClient: SupabaseClient | null = null;
+function getSupabase(): SupabaseClient {
+  if (!supabaseClient) {
+    supabaseClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabaseClient;
+}
+
+// このルートだけは getUser() で守れない。呼ばれるのは signUp() の直後
+// （app/login/page.tsx）で、メール確認方式のためセッションがまだ存在しない。
+// ブラウザから呼ばれるので共有シークレットも使えない（バンドルに載る）。
+//
+// 代わりに二段で絞る:
+//   1. 宛先は受け取らない。userId から auth.users を引き、登録済みの本人の
+//      アドレスにだけ送る（任意のアドレスへ送るための踏み台にならない）。
+//   2. email_logs に type='welcome' の行があれば送らない（重複送信の防止）。
+//      リマインドの重複判定は type='reminder' で絞っているので干渉しない。
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json();
-    if (!email) return NextResponse.json({ error: "No email" }, { status: 400 });
+    const { userId } = await request.json();
+    if (!userId || typeof userId !== "string") {
+      return NextResponse.json({ error: "No userId" }, { status: 400 });
+    }
+
+    // 実在するユーザーか確認し、宛先はDB側の値を使う（クライアントの申告は信じない）
+    const { data: userData } = await getSupabase().auth.admin.getUserById(userId);
+    const email = userData?.user?.email;
+    if (!email) {
+      return NextResponse.json({ error: "Unknown user" }, { status: 404 });
+    }
+
+    // すでに送っていれば何もしない
+    const { data: alreadySent } = await getSupabase()
+      .from("email_logs")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("type", "welcome")
+      .limit(1);
+
+    if (alreadySent && alreadySent.length > 0) {
+      return NextResponse.json({ success: true, skipped: true });
+    }
 
     await getResend().emails.send({
       from: "YORU <hello@yoru-voice.com>",
@@ -52,6 +97,10 @@ export async function POST(request: NextRequest) {
         </div>
       `,
     });
+
+    // 送信済みを記録する（次回以降は上の重複チェックで止まる）。
+    // target_date は日次のリマインド用の列なので welcome では入れない。
+    await getSupabase().from("email_logs").insert({ user_id: userId, type: "welcome" });
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

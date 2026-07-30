@@ -467,11 +467,11 @@ export default function LogsPage() {
     setIsGenerating(true);
     setWeeklySummary(null);
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      // user_id は送らない。サーバーがCookieのセッションから取る。
       const res = await fetch("/api/weekly", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ journals: targetJournals, period, userId: userData.user?.id }),
+        body: JSON.stringify({ journals: targetJournals, period }),
       });
       const data = await readJson<{ summary?: string | null }>(res);
       setWeeklySummary(data?.summary ?? null);
