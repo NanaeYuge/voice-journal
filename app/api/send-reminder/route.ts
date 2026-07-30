@@ -23,6 +23,14 @@ const supabase = createClient(
 // 本文一行目は journals.emotion の辞書引きだけで決める。
 // journals.nuance は「具体的な状況・人物・出来事を含める」指示で生成されるため
 // （app/lib/ai.ts）、強い出来事語がそのまま入る。メールには一切引用しない。
+//
+// 「扉の札」の文言。想起できる感情が無いとき（＝A/Bで述部が引けない中立と、
+// ケースC のすべて）は、想起をやめてこの2文だけを出す。
+// 参照先の無い「話してくれたね」は"覚えてるフリ"になり、実ユーザーにノイズを生む。
+// 件名は「今夜」、一行目は「今日」。A/B/C とも札のときは完全に同文になる。
+const DOOR_SUBJECT = "今夜も、ここを開けています。";
+const DOOR_LINE = "今日も、ここを開けています。";
+
 const REMINDER_COPY = {
   // ケースA/B 共通の述部。emotion がここに無い場合（穏やか・未分類・null・
   // 想定外の値、そのすべて）は各ケースの neutral にフォールバックする。
@@ -37,21 +45,22 @@ const REMINDER_COPY = {
   A: {
     subject: "昨日の気持ち、その後どう？",
     prefix: "昨日は、",
-    neutral: "昨日のこと、話してくれたね。",
+    neutral: DOOR_LINE,
   },
   // B: JST基準で2〜7日前に記録あり。経過日数には言及しない。
   B: {
     subject: "このあいだの気持ち、その後どう？",
     prefix: "このあいだは、",
-    neutral: "このあいだのこと、話してくれたね。",
+    neutral: DOOR_LINE,
   },
-  // C: 記録なし、または8日以上前。想起しない。
+  // C: 記録なし、または8日以上前。想起できるものが無い＝常に札。
+  // 8日以上あいた相手に毎晩同じ独白を送るのではなく、扉が開いている事実だけを置く。
   C: {
-    subject: "今日は、どんな日だった？",
-    line: "今日は、どんな時間だったろう。",
+    subject: DOOR_SUBJECT,
+    line: DOOR_LINE,
   },
   question: "今の気持ちはどう？",
-  cta: "今の気持ちを話す",
+  cta: "気持ちを話す",
   tail: "話したくない日は、そのままで大丈夫。",
 };
 
@@ -85,6 +94,15 @@ function buildFirstLine(kase: ReminderCase, emotion: string | null): string {
   const copy = REMINDER_COPY[kase];
   const predicate = emotion ? REMINDER_COPY.predicateByEmotion[emotion] : undefined;
   return predicate ? `${copy.prefix}${predicate}` : copy.neutral;
+}
+
+// 札を出す条件＝想起できる感情が無い。
+// ケースA/Bで述部が引けなかった場合（emotion が null・穏やか・未分類・想定外の
+// 値のすべて。実運用ではここが最多）と、ケースC のすべて。
+// 札のときは件名を DOOR_SUBJECT に切り替え、固定の問いを出さない。
+function isDoor(kase: ReminderCase, emotion: string | null): boolean {
+  if (kase === "C") return true;
+  return !(emotion && REMINDER_COPY.predicateByEmotion[emotion]);
 }
 
 // Vercel Cron は GET で叩くため、認証を検証したうえで GET/POST の両方から
@@ -192,9 +210,15 @@ async function runReminders() {
         const kase = resolveCase(daysAgo);
 
         // 本文は「一行目（辞書引き） + 固定の問い」の2文。
+        // ただし札のときは問いを出さず、一行目だけで閉じる（想起せず、扉を開けておく）。
         // 解釈・採点・督促・許可/提案文はしない（憲法準拠）。
-        const subject = REMINDER_COPY[kase].subject;
-        const bodyText = `${buildFirstLine(kase, latest?.emotion ?? null)}<br>${REMINDER_COPY.question}`;
+        const emotion = latest?.emotion ?? null;
+        const door = isDoor(kase, emotion);
+        const subject = door ? DOOR_SUBJECT : REMINDER_COPY[kase].subject;
+        const firstLine = buildFirstLine(kase, emotion);
+        const bodyText = door
+          ? firstLine
+          : `${firstLine}<br>${REMINDER_COPY.question}`;
 
         // メール送信
         await getResend().emails.send({
